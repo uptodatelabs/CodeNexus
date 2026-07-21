@@ -259,7 +259,7 @@ class CodeNexusServer:
     
     def _get_source_files(self) -> list[Path]:
         """Get all source files in workspace."""
-        extensions = {".py", ".js", ".jsx", ".ts", ".tsx", ".go", ".rs", ".java"}
+        extensions = {".py", ".js", ".jsx", ".ts", ".tsx", ".go", ".rs", ".java", ".cs"}
         skip_dirs = {"node_modules", ".git", "__pycache__", "venv", ".venv", 
                      "dist", "build", ".codenexus"}
         

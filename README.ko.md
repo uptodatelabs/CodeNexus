@@ -109,9 +109,10 @@ AI 에이전트 (Claude Code, Cursor 등)
 | Python | ✅ 완전 지원 |
 | JavaScript | ✅ 완전 지원 |
 | TypeScript | ✅ 완전 지원 |
-| Go | 🔜 곧 지원 예정 |
-| Rust | 🔜 곧 지원 예정 |
-| Java | 🔜 곧 지원 예정 |
+| Go | ✅ 완전 지원 |
+| Rust | ✅ 완전 지원 |
+| Java | ✅ 완전 지원 |
+| C# | ✅ 완전 지원 |
 
 ---
 

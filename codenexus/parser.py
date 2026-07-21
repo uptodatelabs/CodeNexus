@@ -49,6 +49,36 @@ REGEX_PATTERNS = {
             r'^import\s+["\'](.+?)["\']',
         ]
     ),
+    "go": ParsePattern(
+        function_pattern=r"^func\s+(?:\([^)]+\)\s+)?(\w+)\s*\(",
+        class_pattern=r"^type\s+(\w+)\s+struct",
+        import_patterns=[
+            r'^import\s+[\(]?\s*["\'](.+?)["\']',
+            r'^import\s+["\'](.+?)["\']',
+        ]
+    ),
+    "rust": ParsePattern(
+        function_pattern=r"^(?:pub\s+)?(?:async\s+)?fn\s+(\w+)",
+        class_pattern=r"^(?:pub\s+)?struct\s+(\w+)|(?:pub\s+)?enum\s+(\w+)",
+        import_patterns=[
+            r'^use\s+(.+?)::',
+            r'^use\s+\{(.+?)\}',
+        ]
+    ),
+    "java": ParsePattern(
+        function_pattern=r"(?:public|private|protected|static|\s)*[\w<>\[\]]+\s+(\w+)\s*\(",
+        class_pattern=r"(?:public|private|protected)\s+(?:abstract\s+)?class\s+(\w+)",
+        import_patterns=[
+            r'^import\s+(.+?)\s*;',
+        ]
+    ),
+    "csharp": ParsePattern(
+        function_pattern=r"(?:public|private|protected|internal|static|\s)*[\w<>\[\]]+\s+(\w+)\s*\(",
+        class_pattern=r"(?:public|private|protected|internal)\s+(?:partial\s+)?(?:abstract\s+)?class\s+(\w+)",
+        import_patterns=[
+            r'^using\s+(.+?)\s*;',
+        ]
+    ),
 }
 
 class CodeParser:
@@ -63,7 +93,7 @@ class CodeParser:
     
     def _init_tree_sitter(self):
         """Initialize tree-sitter parsers."""
-        languages = ["python", "javascript", "typescript"]
+        languages = ["python", "javascript", "typescript", "go", "rust", "java", "csharp"]
         for lang in languages:
             try:
                 self.parsers[lang] = get_parser(lang)
@@ -77,6 +107,10 @@ class CodeParser:
             ".jsx": "javascript",
             ".ts": "typescript",
             ".tsx": "typescript",
+            ".go": "go",
+            ".rs": "rust",
+            ".java": "java",
+            ".cs": "csharp",
         }
         return ext_map.get(file_path.suffix.lower())
     

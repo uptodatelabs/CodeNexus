@@ -101,9 +101,10 @@ Add to your `~/.claude.json`:
 | Python | ✅ Full support |
 | JavaScript | ✅ Full support |
 | TypeScript | ✅ Full support |
-| Go | 🔜 Coming soon |
-| Rust | 🔜 Coming soon |
-| Java | 🔜 Coming soon |
+| Go | ✅ Full support |
+| Rust | ✅ Full support |
+| Java | ✅ Full support |
+| C# | ✅ Full support |
 
 ---
 

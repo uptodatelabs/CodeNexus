@@ -139,6 +139,115 @@ def test_index_workspace(temp_dir):
     
     server.graph.close()
 
+def test_parser_go(temp_dir):
+    """Test Go parsing."""
+    test_file = temp_dir / "test.go"
+    test_file.write_text("""
+package main
+
+func hello() {
+    return
+}
+
+func (s *Server) Start() error {
+    return nil
+}
+
+type User struct {
+    Name string
+}
+""")
+    
+    parser = CodeParser(use_tree_sitter=False)
+    nodes, edges = parser.parse_file(test_file)
+    
+    assert len(nodes) >= 2
+    assert any(n.name == "hello" for n in nodes)
+    assert any(n.name == "Start" for n in nodes)
+
+def test_parser_rust(temp_dir):
+    """Test Rust parsing."""
+    test_file = temp_dir / "test.rs"
+    test_file.write_text("""
+fn hello() {
+    return;
+}
+
+pub fn calculate(x: i32) -> i32 {
+    x + 1
+}
+
+struct User {
+    name: String,
+}
+
+enum Color {
+    Red,
+    Green,
+    Blue,
+}
+""")
+    
+    parser = CodeParser(use_tree_sitter=False)
+    nodes, edges = parser.parse_file(test_file)
+    
+    assert len(nodes) >= 3
+    assert any(n.name == "hello" for n in nodes)
+    assert any(n.name == "calculate" for n in nodes)
+    assert any(n.name == "User" for n in nodes)
+
+def test_parser_java(temp_dir):
+    """Test Java parsing."""
+    test_file = temp_dir / "test.java"
+    test_file.write_text("""
+public class Calculator {
+    public int add(int a, int b) {
+        return a + b;
+    }
+    
+    private void helper() {
+        // helper method
+    }
+}
+""")
+    
+    parser = CodeParser(use_tree_sitter=False)
+    nodes, edges = parser.parse_file(test_file)
+    
+    assert len(nodes) >= 2
+    assert any(n.name == "Calculator" for n in nodes)
+    assert any(n.name == "add" for n in nodes)
+
+def test_parser_csharp(temp_dir):
+    """Test C# parsing."""
+    test_file = temp_dir / "test.cs"
+    test_file.write_text("""
+using System;
+
+namespace MyApp
+{
+    public class Program
+    {
+        public static void Main(string[] args)
+        {
+            Console.WriteLine("Hello");
+        }
+        
+        private int Calculate(int x)
+        {
+            return x * 2;
+        }
+    }
+}
+""")
+    
+    parser = CodeParser(use_tree_sitter=False)
+    nodes, edges = parser.parse_file(test_file)
+    
+    assert len(nodes) >= 2
+    assert any(n.name == "Program" for n in nodes)
+    assert any(n.name == "Main" for n in nodes)
+
 def test_pagerank(graph):
     """Test PageRank centrality computation."""
     # Create nodes
