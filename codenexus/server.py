@@ -4,7 +4,7 @@ import json
 import asyncio
 import hashlib
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from mcp.server import Server
@@ -12,11 +12,14 @@ from mcp.types import Tool, TextContent
 
 from .graph import DependencyGraph, Node, Edge
 from .parser import CodeParser, create_capsule
+from .llm import LocalLLM, LLMConfig
 
 class CodeNexusServer:
     """MCP server providing context tools for AI agents."""
     
-    def __init__(self, workspace_path: Path, max_workers: int = 4):
+    def __init__(self, workspace_path: Path, max_workers: int = 4,
+                 llm_model_path: Optional[str] = None,
+                 use_llm: bool = False):
         self.workspace = workspace_path
         self.db_path = workspace_path / ".codenexus" / "index.db"
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -25,6 +28,12 @@ class CodeNexusServer:
         self.parser = CodeParser()
         self.server = Server("codenexus")
         self.max_workers = max_workers
+        
+        # Initialize LLM
+        self.llm: Optional[LocalLLM] = None
+        if use_llm and llm_model_path:
+            self.llm = LocalLLM(LLMConfig(model_path=llm_model_path))
+            self.llm.load_model()
         
         # File hash cache for incremental indexing
         self.cache_path = self.db_path.parent / "cache.json"

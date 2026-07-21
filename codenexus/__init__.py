@@ -6,5 +6,10 @@ __author__ = "CodeNexus Contributors"
 from .graph import DependencyGraph, Node, Edge
 from .parser import CodeParser
 from .server import CodeNexusServer
+from .llm import LocalLLM, LLMConfig, get_llm, init_llm, LLAMA_CPP_AVAILABLE
 
-__all__ = ["DependencyGraph", "Node", "Edge", "CodeParser", "CodeNexusServer"]
+__all__ = [
+    "DependencyGraph", "Node", "Edge", 
+    "CodeParser", "CodeNexusServer",
+    "LocalLLM", "LLMConfig", "get_llm", "init_llm", "LLAMA_CPP_AVAILABLE"
+]

@@ -282,5 +282,78 @@ def clear(ctx):
     
     console.print("[bold green]✓ Index cleared[/]")
 
+@main.group()
+def llm():
+    """Local LLM commands for enhanced context."""
+    pass
+
+@llm.command()
+@click.option("--size", "-s", default="small", 
+              type=click.Choice(["small", "medium", "large"]),
+              help="Model size to download")
+def download(size):
+    """Download a local LLM model."""
+    from .llm import LocalLLM, LLMConfig
+    
+    console.print(f"[bold blue]Downloading {size} model...[/]")
+    
+    llm = LocalLLM(LLMConfig(verbose=True))
+    model_path = llm.download_model(size)
+    
+    if model_path:
+        console.print(f"[bold green]✓ Model downloaded: {model_path}[/]")
+    else:
+        console.print("[red]Failed to download model[/]")
+
+@llm.command()
+@click.argument("model_path")
+@click.option("--gpu", "-g", is_flag=True, help="Enable GPU acceleration")
+def serve(model_path, gpu):
+    """Start LLM server for context optimization."""
+    from .llm import init_llm
+    
+    console.print(f"[bold blue]Starting LLM server...[/]")
+    console.print(f"Model: {model_path}")
+    console.print(f"GPU: {'enabled' if gpu else 'disabled'}")
+    
+    n_gpu_layers = -1 if gpu else 0
+    llm = init_llm(model_path=model_path, n_gpu_layers=n_gpu_layers)
+    
+    if llm._loaded:
+        console.print("[bold green]✓ LLM server ready[/]")
+        console.print("[yellow]LLM will be used for context optimization[/]")
+    else:
+        console.print("[red]Failed to load model[/]")
+
+@llm.command()
+@click.argument("query")
+def analyze(query):
+    """Analyze query intent using local LLM."""
+    from .llm import get_llm
+    
+    llm = get_llm()
+    intent = llm.analyze_intent(query)
+    
+    console.print(f"[bold]Query: {query}[/]")
+    console.print(f"[green]Detected intent: {intent}[/]")
+
+@llm.command()
+def status():
+    """Show LLM status."""
+    from .llm import get_llm, LLAMA_CPP_AVAILABLE
+    
+    console.print("[bold]LLM Status[/]")
+    console.print(f"  llama-cpp-python: {'installed' if LLAMA_CPP_AVAILABLE else 'not installed'}")
+    
+    llm = get_llm()
+    info = llm.get_model_info()
+    
+    if info["status"] == "loaded":
+        console.print(f"  Model: {info['model_path']}")
+        console.print(f"  Context: {info['context_size']}")
+        console.print(f"  GPU layers: {info['gpu_layers']}")
+    else:
+        console.print("  Model: not loaded")
+
 if __name__ == "__main__":
     main()
