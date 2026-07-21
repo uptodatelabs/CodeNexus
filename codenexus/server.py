@@ -2,19 +2,21 @@
 
 import json
 import asyncio
+import hashlib
 from pathlib import Path
 from typing import Any
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from mcp.server import Server
 from mcp.types import Tool, TextContent
 
-from .graph import DependencyGraph, Node
+from .graph import DependencyGraph, Node, Edge
 from .parser import CodeParser, create_capsule
 
 class CodeNexusServer:
     """MCP server providing context tools for AI agents."""
     
-    def __init__(self, workspace_path: Path):
+    def __init__(self, workspace_path: Path, max_workers: int = 4):
         self.workspace = workspace_path
         self.db_path = workspace_path / ".codenexus" / "index.db"
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -22,8 +24,39 @@ class CodeNexusServer:
         self.graph = DependencyGraph(self.db_path)
         self.parser = CodeParser()
         self.server = Server("codenexus")
+        self.max_workers = max_workers
+        
+        # File hash cache for incremental indexing
+        self.cache_path = self.db_path.parent / "cache.json"
+        self.file_cache = self._load_cache()
         
         self._setup_tools()
+    
+    def _load_cache(self) -> dict:
+        """Load file hash cache from disk."""
+        if self.cache_path.exists():
+            try:
+                with open(self.cache_path, "r") as f:
+                    return json.load(f)
+            except Exception:
+                return {}
+        return {}
+    
+    def _save_cache(self):
+        """Save file hash cache to disk."""
+        try:
+            with open(self.cache_path, "w") as f:
+                json.dump(self.file_cache, f, indent=2)
+        except Exception:
+            pass
+    
+    def _get_file_hash(self, file_path: Path) -> str:
+        """Calculate MD5 hash of file content."""
+        try:
+            content = file_path.read_bytes()
+            return hashlib.md5(content).hexdigest()
+        except Exception:
+            return ""
     
     def _setup_tools(self):
         """Register MCP tools."""
@@ -197,7 +230,7 @@ class CodeNexusServer:
         
         skeletons = []
         for row in rows:
-            node = Node(*row[:8])
+            node = Node(*row[:9])
             skeletons.append(f"{node.node_type} {node.name}: {node.signature}")
         
         return [TextContent(
@@ -219,32 +252,99 @@ class CodeNexusServer:
                 "nodes": node_count,
                 "edges": edge_count,
                 "files": file_count,
+                "cached_files": len(self.file_cache),
                 "status": "healthy"
             }, indent=2)
         )]
     
-    def index_workspace(self):
-        """Index all files in workspace."""
-        source_files = (
-            list(self.workspace.rglob("*.py")) +
-            list(self.workspace.rglob("*.js")) +
-            list(self.workspace.rglob("*.ts")) +
-            list(self.workspace.rglob("*.tsx"))
-        )
+    def _get_source_files(self) -> list[Path]:
+        """Get all source files in workspace."""
+        extensions = {".py", ".js", ".jsx", ".ts", ".tsx", ".go", ".rs", ".java"}
+        skip_dirs = {"node_modules", ".git", "__pycache__", "venv", ".venv", 
+                     "dist", "build", ".codenexus"}
         
-        # Skip common directories
-        skip_dirs = {"node_modules", ".git", "__pycache__", "venv", ".venv", "dist", "build"}
+        source_files = []
+        for ext in extensions:
+            for file_path in self.workspace.rglob(f"*{ext}"):
+                if not any(skip in file_path.parts for skip in skip_dirs):
+                    source_files.append(file_path)
         
-        indexed = 0
-        for file_path in source_files:
-            if any(skip in file_path.parts for skip in skip_dirs):
-                continue
+        return source_files
+    
+    def _parse_single_file(self, file_path: Path) -> tuple[list[Node], list[Edge]]:
+        """Parse a single file (for parallel execution)."""
+        try:
+            return self.parser.parse_file(file_path)
+        except Exception as e:
+            print(f"Error parsing {file_path}: {e}")
+            return [], []
+    
+    def index_workspace(self, incremental: bool = True):
+        """
+        Index all files in workspace.
+        
+        Args:
+            incremental: If True, only index changed files
+        """
+        source_files = self._get_source_files()
+        
+        if incremental:
+            # Filter to only changed files
+            files_to_index = []
+            for file_path in source_files:
+                file_hash = self._get_file_hash(file_path)
+                file_key = str(file_path.relative_to(self.workspace))
+                
+                if self.file_cache.get(file_key) != file_hash:
+                    files_to_index.append(file_path)
+                    self.file_cache[file_key] = file_hash
             
-            nodes, edges = self.parser.parse_file(file_path)
-            for node in nodes:
-                self.graph.add_node(node)
-            for edge in edges:
-                self.graph.add_edge(edge)
-            indexed += 1
+            # Remove deleted files from cache
+            existing_files = {str(f.relative_to(self.workspace)) for f in source_files}
+            deleted_files = [k for k in self.file_cache.keys() if k not in existing_files]
+            for deleted in deleted_files:
+                del self.file_cache[deleted]
+            
+            if not files_to_index:
+                print("No files changed since last index")
+                return 0
+        else:
+            files_to_index = source_files
+        
+        print(f"Indexing {len(files_to_index)} files...")
+        
+        # Parallel parsing
+        indexed = 0
+        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            future_to_file = {
+                executor.submit(self._parse_single_file, file_path): file_path
+                for file_path in files_to_index
+            }
+            
+            for future in as_completed(future_to_file):
+                file_path = future_to_file[future]
+                try:
+                    nodes, edges = future.result()
+                    for node in nodes:
+                        self.graph.add_node(node)
+                    for edge in edges:
+                        self.graph.add_edge(edge)
+                    indexed += 1
+                except Exception as e:
+                    print(f"Error processing {file_path}: {e}")
+        
+        # Save cache
+        self._save_cache()
+        
+        # Compute PageRank after indexing
+        if indexed > 0:
+            print("Computing centrality scores...")
+            self.graph.compute_pagerank()
         
         return indexed
+    
+    def clear_index(self):
+        """Clear all index data."""
+        self.graph.clear()
+        self.file_cache = {}
+        self._save_cache()

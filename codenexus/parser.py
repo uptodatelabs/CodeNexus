@@ -1,4 +1,4 @@
-"""Regex-based code parser for common languages."""
+"""Tree-sitter based code parser with regex fallback."""
 
 import re
 from pathlib import Path
@@ -7,14 +7,23 @@ from typing import Optional
 
 from .graph import Node, Edge
 
+# Try to import tree-sitter
+try:
+    import tree_sitter as ts
+    from tree_sitter_languages import get_parser, get_language
+    TREE_SITTER_AVAILABLE = True
+except ImportError:
+    TREE_SITTER_AVAILABLE = False
+
 @dataclass
 class ParsePattern:
-    """Pattern for extracting symbols."""
+    """Pattern for extracting symbols (regex fallback)."""
     function_pattern: str
     class_pattern: str
     import_patterns: list[str]
 
-PATTERNS = {
+# Regex patterns for fallback
+REGEX_PATTERNS = {
     "python": ParsePattern(
         function_pattern=r"^(?:async\s+)?def\s+(\w+)\s*\([^)]*\)(?:\s*->[^:]+)?:",
         class_pattern=r"^class\s+(\w+)(?:\([^)]*\))?:",
@@ -43,10 +52,23 @@ PATTERNS = {
 }
 
 class CodeParser:
-    """Parse source code using regex patterns."""
+    """Parse source code using tree-sitter with regex fallback."""
     
-    def __init__(self):
-        self.patterns = PATTERNS
+    def __init__(self, use_tree_sitter: bool = True):
+        self.use_tree_sitter = use_tree_sitter and TREE_SITTER_AVAILABLE
+        self.parsers = {}
+        
+        if self.use_tree_sitter:
+            self._init_tree_sitter()
+    
+    def _init_tree_sitter(self):
+        """Initialize tree-sitter parsers."""
+        languages = ["python", "javascript", "typescript"]
+        for lang in languages:
+            try:
+                self.parsers[lang] = get_parser(lang)
+            except Exception:
+                pass
     
     def _detect_language(self, file_path: Path) -> Optional[str]:
         ext_map = {
@@ -66,18 +88,125 @@ class CodeParser:
         
         try:
             source = file_path.read_text(encoding="utf-8", errors="ignore")
-            return self._extract_symbols(source, str(file_path), language)
+            
+            # Try tree-sitter first
+            if self.use_tree_sitter and language in self.parsers:
+                return self._parse_with_tree_sitter(source, str(file_path), language)
+            
+            # Fallback to regex
+            return self._parse_with_regex(source, str(file_path), language)
         except Exception as e:
             print(f"Error parsing {file_path}: {e}")
             return [], []
     
-    def _extract_symbols(self, source: str, file_path: str, 
-                         language: str) -> tuple[list[Node], list[Edge]]:
-        """Extract symbols using regex patterns."""
+    def _parse_with_tree_sitter(self, source: str, file_path: str, 
+                                language: str) -> tuple[list[Node], list[Edge]]:
+        """Parse using tree-sitter AST."""
+        parser = self.parsers.get(language)
+        if not parser:
+            return self._parse_with_regex(source, file_path, language)
+        
+        tree = parser.parse(bytes(source, "utf-8"))
         nodes = []
         edges = []
         
-        patterns = self.patterns.get(language)
+        def walk_node(node, depth=0):
+            # Extract functions
+            if node.type in ("function_definition", "function_declaration",
+                           "arrow_function", "function"):
+                name = self._get_node_name(node, source)
+                if name:
+                    node_id = f"{file_path}::{name}"
+                    sig = self._extract_signature_tree_sitter(node, source)
+                    content = source[node.start_byte:node.end_byte]
+                    
+                    nodes.append(Node(
+                        id=node_id,
+                        file_path=file_path,
+                        name=name,
+                        node_type="function",
+                        start_line=node.start_point[0],
+                        end_line=node.end_point[0],
+                        content=content,
+                        signature=sig
+                    ))
+            
+            # Extract classes
+            elif node.type in ("class_definition", "class_declaration", "class"):
+                name = self._get_node_name(node, source)
+                if name:
+                    node_id = f"{file_path}::{name}"
+                    sig = self._extract_signature_tree_sitter(node, source)
+                    content = source[node.start_byte:node.end_byte]
+                    
+                    nodes.append(Node(
+                        id=node_id,
+                        file_path=file_path,
+                        name=name,
+                        node_type="class",
+                        start_line=node.start_point[0],
+                        end_line=node.end_point[0],
+                        content=content,
+                        signature=sig
+                    ))
+            
+            # Extract imports
+            elif node.type in ("import_statement", "import_from_statement",
+                             "import_declaration"):
+                imp = source[node.start_byte:node.end_byte]
+                edges.append(Edge(
+                    source_id=f"{file_path}::import",
+                    target_id=imp.strip(),
+                    edge_type="imports"
+                ))
+            
+            # Recurse
+            for child in node.children:
+                walk_node(child, depth + 1)
+        
+        walk_node(tree.root_node)
+        return nodes, edges
+    
+    def _get_node_name(self, node, source: str) -> Optional[str]:
+        """Extract name from AST node."""
+        # Try common name fields
+        for field in ["name", "identifier"]:
+            name_node = node.child_by_field_name(field)
+            if name_node:
+                return source[name_node.start_byte:name_node.end_byte]
+        
+        # Try first identifier child
+        for child in node.children:
+            if child.type == "identifier":
+                return source[child.start_byte:child.end_byte]
+        
+        return None
+    
+    def _extract_signature_tree_sitter(self, node, source: str) -> str:
+        """Extract signature from tree-sitter node."""
+        # Get text up to the body/block
+        sig_end = node.end_byte
+        for child in node.children:
+            if child.type in ("block", "statement_block", "class_body", 
+                            "arrow_function", "function_body"):
+                sig_end = child.start_byte
+                break
+        
+        sig = source[node.start_byte:sig_end].strip()
+        if sig.endswith(":"):
+            sig = sig[:-1].strip()
+        elif sig.endswith("=>"):
+            sig = sig[:-2].strip()
+        
+        return sig + " ..."
+    
+    def _parse_with_regex(self, source: str, file_path: str, 
+                          language: str) -> tuple[list[Node], list[Edge]]:
+        """Fallback regex-based parsing."""
+        nodes = []
+        edges = []
+        
+        patterns = REGEX_PATTERNS.get(language)
         if not patterns:
             return [], []
         
@@ -89,10 +218,12 @@ class CodeParser:
             # Check for functions
             match = re.match(patterns.function_pattern, stripped, re.MULTILINE)
             if match:
-                name = match.group(1) or match.group(2) if match.lastindex >= 2 else match.group(1)
+                name = match.group(1) if match.lastindex >= 1 else None
+                if not name and match.lastindex >= 2:
+                    name = match.group(2)
                 if name:
                     node_id = f"{file_path}::{name}"
-                    sig = self._extract_function_signature(lines, i)
+                    sig = self._extract_function_signature_regex(lines, i)
                     nodes.append(Node(
                         id=node_id,
                         file_path=file_path,
@@ -110,7 +241,7 @@ class CodeParser:
                 name = match.group(1)
                 if name:
                     node_id = f"{file_path}::{name}"
-                    sig = self._extract_class_signature(lines, i)
+                    sig = self._extract_class_signature_regex(lines, i)
                     nodes.append(Node(
                         id=node_id,
                         file_path=file_path,
@@ -136,8 +267,8 @@ class CodeParser:
         
         return nodes, edges
     
-    def _extract_function_signature(self, lines: list[str], start: int) -> str:
-        """Extract function signature."""
+    def _extract_function_signature_regex(self, lines: list[str], start: int) -> str:
+        """Extract function signature using regex."""
         sig_lines = []
         for i in range(start, min(start + 5, len(lines))):
             sig_lines.append(lines[i].rstrip())
@@ -145,8 +276,8 @@ class CodeParser:
                 break
         return " ".join(sig_lines).strip() + " ..."
     
-    def _extract_class_signature(self, lines: list[str], start: int) -> str:
-        """Extract class signature."""
+    def _extract_class_signature_regex(self, lines: list[str], start: int) -> str:
+        """Extract class signature using regex."""
         sig_lines = []
         for i in range(start, min(start + 5, len(lines))):
             sig_lines.append(lines[i].rstrip())

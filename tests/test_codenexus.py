@@ -138,3 +138,70 @@ def test_index_workspace(temp_dir):
     assert node_count >= 2
     
     server.graph.close()
+
+def test_pagerank(graph):
+    """Test PageRank centrality computation."""
+    # Create nodes
+    nodes = [
+        Node("a.py::main", "a.py", "main", "function", 1, 10, "def main(): pass", "def main(): ..."),
+        Node("b.py::helper", "b.py", "helper", "function", 1, 5, "def helper(): pass", "def helper(): ..."),
+        Node("c.py::utils", "c.py", "utils", "function", 1, 5, "def utils(): pass", "def utils(): ..."),
+        Node("d.py::config", "d.py", "config", "function", 1, 3, "def config(): pass", "def config(): ..."),
+    ]
+    
+    for node in nodes:
+        graph.add_node(node)
+    
+    # Create edges (main -> helper, main -> utils, helper -> config, utils -> config)
+    edges = [
+        Edge("a.py::main", "b.py::helper", "calls"),
+        Edge("a.py::main", "c.py::utils", "calls"),
+        Edge("b.py::helper", "d.py::config", "calls"),
+        Edge("c.py::utils", "d.py::config", "calls"),
+    ]
+    
+    for edge in edges:
+        graph.add_edge(edge)
+    
+    # Compute PageRank
+    scores = graph.compute_pagerank()
+    
+    # config should have highest score (most incoming links)
+    assert scores["d.py::config"] > scores["a.py::main"]
+    assert scores["d.py::config"] > scores["b.py::helper"]
+    
+    # Get top central nodes
+    top_nodes = graph.get_top_central_nodes(2)
+    assert len(top_nodes) == 2
+    assert top_nodes[0].name == "config"
+
+def test_impact_graph(graph):
+    """Test impact graph generation."""
+    # Create nodes
+    nodes = [
+        Node("a.py::main", "a.py", "main", "function", 1, 10, "def main(): pass", "def main(): ..."),
+        Node("b.py::helper", "b.py", "helper", "function", 1, 5, "def helper(): pass", "def helper(): ..."),
+        Node("c.py::utils", "c.py", "utils", "function", 1, 5, "def utils(): pass", "def utils(): ..."),
+        Node("d.py::caller", "d.py", "caller", "function", 1, 5, "def caller(): pass", "def caller(): ..."),
+    ]
+    
+    for node in nodes:
+        graph.add_node(node)
+    
+    # Create edges: caller -> main -> helper -> utils
+    edges = [
+        Edge("d.py::caller", "a.py::main", "calls"),  # caller calls main
+        Edge("a.py::main", "b.py::helper", "calls"),  # main calls helper
+        Edge("b.py::helper", "c.py::utils", "calls"),  # helper calls utils
+    ]
+    
+    for edge in edges:
+        graph.add_edge(edge)
+    
+    # Get impact graph for main (who depends on main?)
+    impact = graph.get_impact_graph("a.py::main", depth=2)
+    
+    # caller depends on main
+    assert impact["total"] >= 1
+    assert len(impact["direct"]) >= 1
+    assert impact["direct"][0]["name"] == "caller"
