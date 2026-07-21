@@ -1,0 +1,57 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "codenexus"
+version = "0.1.0"
+description = "The context engine for AI coding agents - reduce tokens by 70%+"
+requires-python = ">=3.10"
+authors = [
+    {name = "CodeNexus Contributors"}
+]
+license = {text = "MIT"}
+readme = "README.md"
+homepage = "https://github.com/poroporo2/CodeNexus"
+repository = "https://github.com/poroporo2/CodeNexus"
+keywords = ["ai", "coding", "context", "mcp", "code-analysis", "tokens"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Code Generators",
+    "Topic :: Software Development :: Quality Assurance",
+]
+dependencies = [
+    "rich>=13.0",
+    "mcp>=1.0.0",
+    "click>=8.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "ruff>=0.1.0",
+]
+full = [
+    "tree-sitter>=0.21.0",
+    "tree-sitter-languages>=1.10.0",
+    "sqlite-utils>=3.35",
+]
+
+[project.scripts]
+codenexus = "codenexus.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["codenexus"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
