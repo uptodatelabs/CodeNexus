@@ -528,5 +528,198 @@ def deps():
         else:
             console.print(f"[cyan]{repo}[/]: no dependencies")
 
+@main.group()
+def memory():
+    """Session memory and decision tracking."""
+    pass
+
+@memory.command()
+@click.argument("name")
+def start(name):
+    """Start a new session."""
+    from .memory import get_memory
+    
+    mem = get_memory()
+    session = mem.create_session(name)
+    
+    console.print(f"[bold green]✓ Session started: {session.id}[/]")
+    console.print(f"Name: {session.name}")
+
+@memory.command()
+@click.argument("session_id")
+@click.option("--summary", "-s", default="", help="Session summary")
+def end(session_id, summary):
+    """End a session."""
+    from .memory import get_memory
+    
+    mem = get_memory()
+    mem.end_session(session_id, summary)
+    
+    # Generate summary if not provided
+    if not summary:
+        summary = mem.generate_session_summary(session_id)
+        console.print("[bold]Session Summary:[/]")
+        console.print(summary)
+    
+    console.print(f"[bold green]✓ Session ended: {session_id}[/]")
+
+@memory.command()
+@click.argument("session_id")
+@click.argument("description")
+@click.option("--type", "-t", "decision_type", 
+              type=click.Choice(["code_change", "architecture", "bug_fix", 
+                                 "refactor", "feature", "config"]),
+              default="code_change",
+              help="Decision type")
+@click.option("--rationale", "-r", default="", help="Decision rationale")
+@click.option("--files", "-f", multiple=True, help="Files affected")
+@click.option("--tags", multiple=True, help="Tags")
+def decide(session_id, description, decision_type, rationale, files, tags):
+    """Record a decision."""
+    from .memory import get_memory, DecisionType
+    
+    mem = get_memory()
+    decision = mem.add_decision(
+        session_id,
+        DecisionType(decision_type),
+        description,
+        rationale,
+        list(files),
+        list(tags)
+    )
+    
+    console.print(f"[bold green]✓ Decision recorded: {decision.id}[/]")
+    console.print(f"Type: {decision_type}")
+    console.print(f"Description: {description}")
+
+@memory.command()
+@click.argument("session_id")
+@click.option("--limit", "-l", default=10, help="Number of recent sessions")
+def sessions(limit):
+    """List recent sessions."""
+    from .memory import get_memory
+    
+    mem = get_memory()
+    sessions = mem.get_recent_sessions(limit)
+    
+    if not sessions:
+        console.print("[yellow]No sessions found.[/]")
+        return
+    
+    table = Table(title="Recent Sessions")
+    table.add_column("ID", style="cyan")
+    table.add_column("Name", style="green")
+    table.add_column("Start", style="yellow")
+    table.add_column("End", style="magenta")
+    
+    for s in sessions:
+        table.add_row(
+            s.id,
+            s.name,
+            s.start_time.strftime("%Y-%m-%d %H:%M"),
+            s.end_time.strftime("%Y-%m-%d %H:%M") if s.end_time else "ongoing"
+        )
+    
+    console.print(table)
+
+@memory.command()
+@click.argument("session_id")
+def decisions(session_id):
+    """List decisions in a session."""
+    from .memory import get_memory
+    
+    mem = get_memory()
+    decisions = mem.get_decisions(session_id)
+    
+    if not decisions:
+        console.print("[yellow]No decisions found.[/]")
+        return
+    
+    table = Table(title=f"Decisions in Session: {session_id}")
+    table.add_column("Type", style="cyan")
+    table.add_column("Description", style="green")
+    table.add_column("Files", style="yellow")
+    
+    for d in decisions:
+        table.add_row(
+            d.decision_type.value,
+            d.description[:50] + "..." if len(d.description) > 50 else d.description,
+            str(len(d.files_affected))
+        )
+    
+    console.print(table)
+
+@memory.command()
+@click.argument("query")
+def search(query):
+    """Search memories and decisions."""
+    from .memory import get_memory
+    
+    mem = get_memory()
+    
+    # Search decisions
+    decisions = mem.search_decisions(query)
+    
+    # Search memories
+    memories = mem.search_memories(query)
+    
+    if not decisions and not memories:
+        console.print(f"[yellow]No results for: {query}[/]")
+        return
+    
+    if decisions:
+        console.print("[bold]Decisions:[/]")
+        for d in decisions[:5]:
+            console.print(f"  [{d.decision_type.value}] {d.description}")
+    
+    if memories:
+        console.print("[bold]Memories:[/]")
+        for m in memories[:5]:
+            console.print(f"  {m['key']}: {m['value'][:50]}...")
+
+@memory.command()
+def stats():
+    """Show memory statistics."""
+    from .memory import get_memory
+    
+    mem = get_memory()
+    stats = mem.get_statistics()
+    
+    table = Table(title="Memory Statistics")
+    table.add_column("Metric", style="cyan")
+    table.add_column("Value", style="green")
+    
+    table.add_row("Sessions", str(stats["sessions"]))
+    table.add_row("Decisions", str(stats["decisions"]))
+    table.add_row("Memories", str(stats["memories"]))
+    table.add_row("File Changes", str(stats["file_changes"]))
+    
+    console.print(table)
+    
+    if stats["decision_types"]:
+        type_table = Table(title="Decision Types")
+        type_table.add_column("Type", style="cyan")
+        type_table.add_column("Count", style="green")
+        
+        for dtype, count in stats["decision_types"].items():
+            type_table.add_row(dtype, str(count))
+        
+        console.print(type_table)
+
+@memory.command()
+@click.argument("session_id")
+def summary(session_id):
+    """Generate session summary."""
+    from .memory import get_memory
+    
+    mem = get_memory()
+    summary = mem.generate_session_summary(session_id)
+    
+    if not summary:
+        console.print(f"[yellow]Session not found: {session_id}[/]")
+        return
+    
+    console.print(Panel(summary, title="Session Summary"))
+
 if __name__ == "__main__":
     main()
