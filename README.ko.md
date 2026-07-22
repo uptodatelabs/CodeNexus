@@ -88,18 +88,132 @@ AI 에이전트 (Claude Code, Cursor 등)
 
 ## Claude Code 연동
 
-`~/.claude.json`에 추가:
+CodeNexus는 Claude Code와 연동하여 AI 코딩 에이전트의 토큰 사용량을 줄입니다.
+
+### 설정 방법
+
+#### 1. CodeNexus 설치
+
+```bash
+pip install codenexus-ai
+```
+
+#### 2. `.claude.json` 파일 편집
+
+**파일 위치:**
+- macOS/Linux: `~/.claude.json`
+- Windows: `C:\Users\사용자이름\.claude.json`
+
+#### 3. 설정 추가
+
+`~/.claude.json` 파일에 다음 내용을 추가하세요:
 
 ```json
 {
   "mcpServers": {
     "codenexus": {
       "command": "codenexus",
-      "args": ["serve", "-w", "/path/to/your/project"]
+      "args": ["serve", "-w", "여기에_프로젝트_경로"]
     }
   }
 }
 ```
+
+**⚠️ 중요: `여기에_프로젝트_경로`는 CodeNexus를 사용할 프로젝트의 경로입니다.**
+
+### 경로 설정 예시
+
+**❌ 잘못된 예시:**
+```json
+"args": ["serve", "-w", "C:\\Users\\username\\.codenexus"]
+```
+→ CodeNexus 설정 디렉토리 (오류)
+
+**✅ 올바른 예시:**
+```json
+"args": ["serve", "-w", "C:\\Users\\username\\projects\\my-app"]
+```
+→ CodeNexus를 사용할 프로젝트 디렉토리
+
+### OS별 경로 예시
+
+**Windows:**
+```json
+{
+  "mcpServers": {
+    "codenexus": {
+      "command": "codenexus",
+      "args": ["serve", "-w", "C:\\Users\\username\\projects\\my-app"]
+    }
+  }
+}
+```
+
+**macOS/Linux:**
+```json
+{
+  "mcpServers": {
+    "codenexus": {
+      "command": "codenexus",
+      "args": ["serve", "-w", "/home/username/projects/my-app"]
+    }
+  }
+}
+```
+
+### 여러 프로젝트 설정
+
+여러 프로젝트에서 CodeNexus를 사용하려면, 각 프로젝트별로 설정을 추가하세요:
+
+```json
+{
+  "projects": {
+    "C:\\Users\\username\\projects\\app1": {
+      "mcpServers": {
+        "codenexus": {
+          "command": "codenexus",
+          "args": ["serve", "-w", "C:\\Users\\username\\projects\\app1"]
+        }
+      }
+    },
+    "C:\\Users\\username\\projects\\app2": {
+      "mcpServers": {
+        "codenexus": {
+          "command": "codenexus",
+          "args": ["serve", "-w", "C:\\Users\\username\\projects\\app2"]
+        }
+      }
+    }
+  }
+}
+```
+
+### 설정 확인
+
+1. `.claude.json` 파일 저장
+2. Claude Code 재시작
+3. CodeNexus를 사용할 프로젝트 디렉토리에서 Claude 실행
+
+```bash
+cd C:\Users\username\projects\my-app
+claude
+```
+
+### 문제 해결
+
+**MCP 서버가 연결되지 않는 경우:**
+
+1. CodeNexus가 설치되어 있는지 확인:
+   ```bash
+   pip show codenexus-ai
+   ```
+
+2. 코드 실행 테스트:
+   ```bash
+   codenexus --version
+   ```
+
+3. 경로가 올바른지 확인 (따옴표 주의)
 
 ---
 
