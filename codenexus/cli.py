@@ -1,19 +1,18 @@
 """CLI interface for CodeNexus."""
 
-import click
-import json
 import sys
 import time
 from pathlib import Path
+
+import click
 from rich.console import Console
-from rich.table import Table
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.table import Table
 
-from .graph import DependencyGraph, Node
-from .parser import CodeParser
+from .graph import DependencyGraph
+from .license import get_license
 from .server import CodeNexusServer
-from .license import get_license, LicenseTier
 
 # Fix Windows console encoding
 if sys.platform == "win32":
@@ -41,19 +40,19 @@ def main(ctx, workspace):
 def index(ctx, full, workers):
     """Index the workspace for context retrieval."""
     workspace = ctx.obj["workspace"]
-    
+
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
         console=console,
     ) as progress:
         task = progress.add_task("[cyan]Indexing workspace...", total=None)
-        
+
         server = CodeNexusServer(workspace, max_workers=workers)
         start_time = time.time()
         count = server.index_workspace(incremental=not full)
         elapsed = time.time() - start_time
-    
+
     if count > 0:
         console.print(f"[bold green]✓ Indexed {count} files in {elapsed:.2f}s[/]")
     else:
@@ -68,25 +67,25 @@ def search(ctx, query, max_tokens, top):
     """Search for context related to a query."""
     workspace = ctx.obj["workspace"]
     db_path = workspace / ".codenexus" / "index.db"
-    
+
     if not db_path.exists():
         console.print("[red]No index found. Run 'codenexus index' first.[/]")
         return
-    
+
     graph = DependencyGraph(db_path)
     nodes = graph.search_nodes(query, limit=top)
-    
+
     if not nodes:
         console.print(f"[yellow]No results for: {query}[/]")
         return
-    
+
     table = Table(title=f"Search Results: {query}")
     table.add_column("File", style="cyan")
     table.add_column("Name", style="green")
     table.add_column("Type", style="magenta")
     table.add_column("Lines", style="yellow")
     table.add_column("Centrality", style="blue")
-    
+
     for node in nodes:
         table.add_row(
             node.file_path,
@@ -95,7 +94,7 @@ def search(ctx, query, max_tokens, top):
             f"{node.start_line}-{node.end_line}",
             f"{node.centrality_score:.4f}"
         )
-    
+
     console.print(table)
 
 @main.command()
@@ -106,13 +105,13 @@ def pipeline(ctx, task, max_tokens):
     """Run context pipeline for a task."""
     workspace = ctx.obj["workspace"]
     server = CodeNexusServer(workspace)
-    
+
     import asyncio
     result = asyncio.run(server._run_pipeline({
         "task": task,
         "max_tokens": max_tokens
     }))
-    
+
     console.print(Panel(result[0].text, title="Context Capsule"))
 
 @main.command()
@@ -121,53 +120,53 @@ def status(ctx):
     """Show index status and statistics."""
     workspace = ctx.obj["workspace"]
     db_path = workspace / ".codenexus" / "index.db"
-    
+
     if not db_path.exists():
         console.print("[yellow]No index found.[/]")
         return
-    
+
     graph = DependencyGraph(db_path)
     node_count = graph.conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
     edge_count = graph.conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0]
     file_count = graph.conn.execute(
         "SELECT COUNT(DISTINCT file_path) FROM nodes"
     ).fetchone()[0]
-    
+
     # Get centrality stats
     avg_centrality = graph.conn.execute(
         "SELECT AVG(centrality_score) FROM nodes"
     ).fetchone()[0] or 0
-    
+
     max_centrality = graph.conn.execute(
         "SELECT MAX(centrality_score) FROM nodes"
     ).fetchone()[0] or 0
-    
+
     # Get node type distribution
     type_dist = graph.conn.execute(
         "SELECT node_type, COUNT(*) FROM nodes GROUP BY node_type"
     ).fetchall()
-    
+
     table = Table(title="Index Status")
     table.add_column("Metric", style="cyan")
     table.add_column("Value", style="green")
-    
+
     table.add_row("Nodes", str(node_count))
     table.add_row("Edges", str(edge_count))
     table.add_row("Files", str(file_count))
     table.add_row("Avg Centrality", f"{avg_centrality:.4f}")
     table.add_row("Max Centrality", f"{max_centrality:.4f}")
-    
+
     console.print(table)
-    
+
     # Node type distribution
     if type_dist:
         type_table = Table(title="Node Types")
         type_table.add_column("Type", style="cyan")
         type_table.add_column("Count", style="green")
-        
+
         for node_type, count in type_dist:
             type_table.add_row(node_type, str(count))
-        
+
         console.print(type_table)
 
 @main.command()
@@ -178,38 +177,38 @@ def impact(ctx, symbol, depth):
     """Show impact graph for a symbol."""
     workspace = ctx.obj["workspace"]
     db_path = workspace / ".codenexus" / "index.db"
-    
+
     if not db_path.exists():
         console.print("[red]No index found. Run 'codenexus index' first.[/]")
         return
-    
+
     graph = DependencyGraph(db_path)
-    
+
     # Find the node
     nodes = graph.search_nodes(symbol, limit=1)
     if not nodes:
         console.print(f"[yellow]Symbol not found: {symbol}[/]")
         return
-    
+
     node = nodes[0]
     impact = graph.get_impact_graph(node.id, depth=depth)
-    
+
     console.print(f"[bold]Impact Analysis: {node.name}[/]")
     console.print(f"File: {node.file_path}")
     console.print(f"Type: {node.node_type}")
     console.print(f"Centrality: {node.centrality_score:.4f}")
     console.print()
-    
+
     if impact["direct"]:
         console.print("[bold cyan]Direct Dependents:[/]")
         for dep in impact["direct"]:
             console.print(f"  • {dep['name']} ({dep['file']})")
-    
+
     if impact["indirect"]:
         console.print("[bold yellow]Indirect Dependents:[/]")
         for dep in impact["indirect"]:
             console.print(f"  • {dep['name']} ({dep['file']}) [depth: {dep['depth']}]")
-    
+
     console.print(f"\n[bold]Total Impact: {impact['total']}[/]")
 
 @main.command()
@@ -219,25 +218,25 @@ def top(ctx, depth):
     """Show top nodes by centrality score."""
     workspace = ctx.obj["workspace"]
     db_path = workspace / ".codenexus" / "index.db"
-    
+
     if not db_path.exists():
         console.print("[red]No index found. Run 'codenexus index' first.[/]")
         return
-    
+
     graph = DependencyGraph(db_path)
     nodes = graph.get_top_central_nodes(depth)
-    
+
     if not nodes:
         console.print("[yellow]No nodes found.[/]")
         return
-    
+
     table = Table(title=f"Top {depth} Nodes by Centrality")
     table.add_column("Rank", style="cyan")
     table.add_column("Name", style="green")
     table.add_column("Type", style="magenta")
     table.add_column("File", style="yellow")
     table.add_column("Centrality", style="blue")
-    
+
     for i, node in enumerate(nodes, 1):
         table.add_row(
             str(i),
@@ -246,7 +245,7 @@ def top(ctx, depth):
             node.file_path,
             f"{node.centrality_score:.6f}"
         )
-    
+
     console.print(table)
 
 @main.command()
@@ -255,15 +254,15 @@ def serve(ctx):
     """Start MCP server for AI agent integration."""
     workspace = ctx.obj["workspace"]
     server = CodeNexusServer(workspace)
-    
+
     console.print("[bold green]Starting MCP server...[/]")
     console.print(f"Workspace: {workspace}")
-    
+
     # Index if needed
     if not (workspace / ".codenexus" / "index.db").exists():
         console.print("[yellow]No index found. Indexing workspace...[/]")
         server.index_workspace()
-    
+
     # Run MCP server (simplified - real implementation would use stdio)
     console.print("[bold blue]MCP server ready. Use with Claude Code or other agents.[/]")
 
@@ -273,14 +272,14 @@ def clear(ctx):
     """Clear all index data."""
     workspace = ctx.obj["workspace"]
     db_path = workspace / ".codenexus" / "index.db"
-    
+
     if not db_path.exists():
         console.print("[yellow]No index to clear.[/]")
         return
-    
+
     server = CodeNexusServer(workspace)
     server.clear_index()
-    
+
     console.print("[bold green]✓ Index cleared[/]")
 
 @main.group()
@@ -289,18 +288,18 @@ def llm():
     pass
 
 @llm.command()
-@click.option("--size", "-s", default="small", 
+@click.option("--size", "-s", default="small",
               type=click.Choice(["small", "medium", "large"]),
               help="Model size to download")
 def download(size):
     """Download a local LLM model."""
-    from .llm import LocalLLM, LLMConfig
-    
+    from .llm import LLMConfig, LocalLLM
+
     console.print(f"[bold blue]Downloading {size} model...[/]")
-    
+
     llm = LocalLLM(LLMConfig(verbose=True))
     model_path = llm.download_model(size)
-    
+
     if model_path:
         console.print(f"[bold green]✓ Model downloaded: {model_path}[/]")
     else:
@@ -312,14 +311,14 @@ def download(size):
 def serve(model_path, gpu):
     """Start LLM server for context optimization."""
     from .llm import init_llm
-    
-    console.print(f"[bold blue]Starting LLM server...[/]")
+
+    console.print("[bold blue]Starting LLM server...[/]")
     console.print(f"Model: {model_path}")
     console.print(f"GPU: {'enabled' if gpu else 'disabled'}")
-    
+
     n_gpu_layers = -1 if gpu else 0
     llm = init_llm(model_path=model_path, n_gpu_layers=n_gpu_layers)
-    
+
     if llm._loaded:
         console.print("[bold green]✓ LLM server ready[/]")
         console.print("[yellow]LLM will be used for context optimization[/]")
@@ -331,24 +330,24 @@ def serve(model_path, gpu):
 def analyze(query):
     """Analyze query intent using local LLM."""
     from .llm import get_llm
-    
+
     llm = get_llm()
     intent = llm.analyze_intent(query)
-    
+
     console.print(f"[bold]Query: {query}[/]")
     console.print(f"[green]Detected intent: {intent}[/]")
 
 @llm.command()
 def status():
     """Show LLM status."""
-    from .llm import get_llm, LLAMA_CPP_AVAILABLE
-    
+    from .llm import LLAMA_CPP_AVAILABLE, get_llm
+
     console.print("[bold]LLM Status[/]")
     console.print(f"  llama-cpp-python: {'installed' if LLAMA_CPP_AVAILABLE else 'not installed'}")
-    
+
     llm = get_llm()
     info = llm.get_model_info()
-    
+
     if info["status"] == "loaded":
         console.print(f"  Model: {info['model_path']}")
         console.print(f"  Context: {info['context_size']}")
@@ -366,12 +365,12 @@ def workspace():
 def init(name):
     """Initialize a new workspace."""
     from .workspace import MultiRepoWorkspace, WorkspaceConfig
-    
+
     workspace_path = Path.cwd()
     ws = MultiRepoWorkspace(workspace_path)
     ws.config = WorkspaceConfig(name=name)
     ws.save_config()
-    
+
     console.print(f"[bold green]✓ Workspace '{name}' initialized[/]")
     console.print(f"Config: {ws.config_path}")
 
@@ -382,10 +381,10 @@ def init(name):
 def add(alias, path, description):
     """Add a repository to the workspace."""
     from .workspace import MultiRepoWorkspace
-    
+
     workspace_path = Path.cwd()
     ws = MultiRepoWorkspace(workspace_path)
-    
+
     if ws.add_repo(alias, Path(path), description):
         console.print(f"[bold green]✓ Repository '{alias}' added[/]")
     else:
@@ -396,10 +395,10 @@ def add(alias, path, description):
 def remove(alias):
     """Remove a repository from the workspace."""
     from .workspace import MultiRepoWorkspace
-    
+
     workspace_path = Path.cwd()
     ws = MultiRepoWorkspace(workspace_path)
-    
+
     if ws.remove_repo(alias):
         console.print(f"[bold green]✓ Repository '{alias}' removed[/]")
     else:
@@ -410,16 +409,16 @@ def remove(alias):
 def index(repo):
     """Index all repositories in the workspace."""
     from .workspace import MultiRepoWorkspace
-    
+
     workspace_path = Path.cwd()
     ws = MultiRepoWorkspace(workspace_path)
-    
+
     if not ws.config:
         console.print("[red]No workspace found. Run 'codenexus workspace init' first.[/]")
         return
-    
+
     console.print(f"[bold blue]Indexing workspace: {ws.config.name}[/]")
-    
+
     if repo:
         count = ws.index_repo(repo)
         console.print(f"  {repo}: {count} files")
@@ -427,7 +426,7 @@ def index(repo):
         results = ws.index_all()
         for alias, count in results.items():
             console.print(f"  {alias}: {count} files")
-    
+
     console.print("[bold green]✓ Indexing complete[/]")
 
 @workspace.command()
@@ -437,28 +436,28 @@ def index(repo):
 def search(query, repos, limit):
     """Search across repositories."""
     from .workspace import MultiRepoWorkspace
-    
+
     workspace_path = Path.cwd()
     ws = MultiRepoWorkspace(workspace_path)
-    
+
     if not ws.config:
         console.print("[red]No workspace found. Run 'codenexus workspace init' first.[/]")
         return
-    
+
     repo_list = list(repos) if repos else None
     results = ws.search(query, repos=repo_list, limit=limit)
-    
+
     if not results:
         console.print(f"[yellow]No results for: {query}[/]")
         return
-    
+
     table = Table(title=f"Cross-repo Search: {query}")
     table.add_column("Repo", style="cyan")
     table.add_column("Name", style="green")
     table.add_column("Type", style="magenta")
     table.add_column("File", style="yellow")
     table.add_column("Score", style="blue")
-    
+
     for result in results:
         node = result["node"]
         table.add_row(
@@ -468,59 +467,59 @@ def search(query, repos, limit):
             node.file_path,
             f"{result['score']:.4f}"
         )
-    
+
     console.print(table)
 
 @workspace.command()
 def status():
     """Show workspace status."""
     from .workspace import MultiRepoWorkspace
-    
+
     workspace_path = Path.cwd()
     ws = MultiRepoWorkspace(workspace_path)
-    
+
     if not ws.config:
         console.print("[yellow]No workspace found.[/]")
         return
-    
+
     info = ws.get_status()
-    
+
     console.print(f"[bold]Workspace: {info['name']}[/]")
     console.print(f"Repositories: {info['repos']}")
     console.print()
-    
+
     if info['repo_status']:
         table = Table(title="Repository Status")
         table.add_column("Alias", style="cyan")
         table.add_column("Path", style="green")
         table.add_column("Nodes", style="yellow")
-        
+
         for repo in info['repo_status']:
             table.add_row(
                 repo['alias'],
                 repo['path'],
                 str(repo['nodes'])
             )
-        
+
         console.print(table)
 
 @workspace.command()
 def deps():
     """Show cross-repo dependencies."""
     from .workspace import MultiRepoWorkspace
-    
+
     workspace_path = Path.cwd()
     ws = MultiRepoWorkspace(workspace_path)
-    
+
     if not ws.config:
         console.print("[yellow]No workspace found.[/]")
         return
-    
+
     deps = ws.get_cross_repo_dependencies()
-    
+
     console.print("[bold]Cross-repo Dependencies[/]")
     console.print()
-    
+
     for repo, dep_list in deps.items():
         if dep_list:
             console.print(f"[cyan]{repo}[/] depends on:")
@@ -539,10 +538,10 @@ def memory():
 def start(name):
     """Start a new session."""
     from .memory import get_memory
-    
+
     mem = get_memory()
     session = mem.create_session(name)
-    
+
     console.print(f"[bold green]✓ Session started: {session.id}[/]")
     console.print(f"Name: {session.name}")
 
@@ -552,23 +551,23 @@ def start(name):
 def end(session_id, summary):
     """End a session."""
     from .memory import get_memory
-    
+
     mem = get_memory()
     mem.end_session(session_id, summary)
-    
+
     # Generate summary if not provided
     if not summary:
         summary = mem.generate_session_summary(session_id)
         console.print("[bold]Session Summary:[/]")
         console.print(summary)
-    
+
     console.print(f"[bold green]✓ Session ended: {session_id}[/]")
 
 @memory.command()
 @click.argument("session_id")
 @click.argument("description")
-@click.option("--type", "-t", "decision_type", 
-              type=click.Choice(["code_change", "architecture", "bug_fix", 
+@click.option("--type", "-t", "decision_type",
+              type=click.Choice(["code_change", "architecture", "bug_fix",
                                  "refactor", "feature", "config"]),
               default="code_change",
               help="Decision type")
@@ -577,8 +576,8 @@ def end(session_id, summary):
 @click.option("--tags", multiple=True, help="Tags")
 def decide(session_id, description, decision_type, rationale, files, tags):
     """Record a decision."""
-    from .memory import get_memory, DecisionType
-    
+    from .memory import DecisionType, get_memory
+
     mem = get_memory()
     decision = mem.add_decision(
         session_id,
@@ -588,7 +587,7 @@ def decide(session_id, description, decision_type, rationale, files, tags):
         list(files),
         list(tags)
     )
-    
+
     console.print(f"[bold green]✓ Decision recorded: {decision.id}[/]")
     console.print(f"Type: {decision_type}")
     console.print(f"Description: {description}")
@@ -599,20 +598,20 @@ def decide(session_id, description, decision_type, rationale, files, tags):
 def sessions(limit):
     """List recent sessions."""
     from .memory import get_memory
-    
+
     mem = get_memory()
     sessions = mem.get_recent_sessions(limit)
-    
+
     if not sessions:
         console.print("[yellow]No sessions found.[/]")
         return
-    
+
     table = Table(title="Recent Sessions")
     table.add_column("ID", style="cyan")
     table.add_column("Name", style="green")
     table.add_column("Start", style="yellow")
     table.add_column("End", style="magenta")
-    
+
     for s in sessions:
         table.add_row(
             s.id,
@@ -620,7 +619,7 @@ def sessions(limit):
             s.start_time.strftime("%Y-%m-%d %H:%M"),
             s.end_time.strftime("%Y-%m-%d %H:%M") if s.end_time else "ongoing"
         )
-    
+
     console.print(table)
 
 @memory.command()
@@ -628,26 +627,26 @@ def sessions(limit):
 def decisions(session_id):
     """List decisions in a session."""
     from .memory import get_memory
-    
+
     mem = get_memory()
     decisions = mem.get_decisions(session_id)
-    
+
     if not decisions:
         console.print("[yellow]No decisions found.[/]")
         return
-    
+
     table = Table(title=f"Decisions in Session: {session_id}")
     table.add_column("Type", style="cyan")
     table.add_column("Description", style="green")
     table.add_column("Files", style="yellow")
-    
+
     for d in decisions:
         table.add_row(
             d.decision_type.value,
             d.description[:50] + "..." if len(d.description) > 50 else d.description,
             str(len(d.files_affected))
         )
-    
+
     console.print(table)
 
 @memory.command()
@@ -655,24 +654,24 @@ def decisions(session_id):
 def search(query):
     """Search memories and decisions."""
     from .memory import get_memory
-    
+
     mem = get_memory()
-    
+
     # Search decisions
     decisions = mem.search_decisions(query)
-    
+
     # Search memories
     memories = mem.search_memories(query)
-    
+
     if not decisions and not memories:
         console.print(f"[yellow]No results for: {query}[/]")
         return
-    
+
     if decisions:
         console.print("[bold]Decisions:[/]")
         for d in decisions[:5]:
             console.print(f"  [{d.decision_type.value}] {d.description}")
-    
+
     if memories:
         console.print("[bold]Memories:[/]")
         for m in memories[:5]:
@@ -682,29 +681,29 @@ def search(query):
 def stats():
     """Show memory statistics."""
     from .memory import get_memory
-    
+
     mem = get_memory()
     stats = mem.get_statistics()
-    
+
     table = Table(title="Memory Statistics")
     table.add_column("Metric", style="cyan")
     table.add_column("Value", style="green")
-    
+
     table.add_row("Sessions", str(stats["sessions"]))
     table.add_row("Decisions", str(stats["decisions"]))
     table.add_row("Memories", str(stats["memories"]))
     table.add_row("File Changes", str(stats["file_changes"]))
-    
+
     console.print(table)
-    
+
     if stats["decision_types"]:
         type_table = Table(title="Decision Types")
         type_table.add_column("Type", style="cyan")
         type_table.add_column("Count", style="green")
-        
+
         for dtype, count in stats["decision_types"].items():
             type_table.add_row(dtype, str(count))
-        
+
         console.print(type_table)
 
 @memory.command()
@@ -712,14 +711,14 @@ def stats():
 def summary(session_id):
     """Generate session summary."""
     from .memory import get_memory
-    
+
     mem = get_memory()
     summary = mem.generate_session_summary(session_id)
-    
+
     if not summary:
         console.print(f"[yellow]Session not found: {session_id}[/]")
         return
-    
+
     console.print(Panel(summary, title="Session Summary"))
 
 @main.group()
@@ -730,30 +729,28 @@ def license():
 @license.command()
 def status():
     """Show license status."""
-    from .license import get_license
-    
+
     lic = get_license()
     info = lic.get_license_info()
-    
+
     table = Table(title="License Status")
     table.add_column("Property", style="cyan")
     table.add_column("Value", style="green")
-    
+
     table.add_row("Tier", info["tier"])
     table.add_row("Owner", info["owner"] or "N/A")
     table.add_row("Expires", info["expires_at"] or "Never")
     table.add_row("Valid", "Yes" if info["is_valid"] else "No")
-    
+
     console.print(table)
 
 @license.command()
 @click.argument("license_key")
 def activate(license_key):
     """Activate a license key."""
-    from .license import get_license
-    
+
     lic = get_license()
-    
+
     if lic.activate_license(license_key):
         console.print("[bold green]✓ License activated successfully[/]")
         info = lic.get_license_info()
@@ -766,14 +763,13 @@ def activate(license_key):
 @license.command()
 def features():
     """Show available features."""
-    from .license import get_license
-    
+
     lic = get_license()
     tier = lic.get_tier()
-    
+
     console.print(f"[bold]Current Tier: {tier.value}[/]")
     console.print()
-    
+
     features = [
         ("Basic parsing (3 languages)", True),
         ("Full parsing (9 languages)", lic.has_feature("languages")),
@@ -784,15 +780,15 @@ def features():
         ("CLI", lic.has_feature("cli")),
         ("Priority support", lic.has_feature("priority_support")),
     ]
-    
+
     table = Table(title="Features")
     table.add_column("Feature", style="cyan")
     table.add_column("Status", style="green")
-    
+
     for feature, available in features:
         status = "✓" if available else "✗ (Pro)"
         table.add_row(feature, status)
-    
+
     console.print(table)
 
 @license.command()
