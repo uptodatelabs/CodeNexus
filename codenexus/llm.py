@@ -6,18 +6,22 @@ from pathlib import Path
 # Try to import llama-cpp-python
 try:
     from llama_cpp import Llama
+
     LLAMA_CPP_AVAILABLE = True
 except ImportError:
     LLAMA_CPP_AVAILABLE = False
 
+
 @dataclass
 class LLMConfig:
     """LLM configuration."""
+
     model_path: str | None = None
     n_ctx: int = 4096
     n_gpu_layers: int = 0  # Set to -1 for GPU acceleration
     verbose: bool = False
     embedding: bool = False
+
 
 class LocalLLM:
     """Local LLM for code analysis and context optimization."""
@@ -28,20 +32,20 @@ class LocalLLM:
             "repo_id": "lmstudio-community/Qwen2.5-Coder-3B-Instruct-GGUF",
             "filename": "*q4_0.gguf",
             "description": "3B parameters, fast, good for simple tasks",
-            "size_gb": 2.0
+            "size_gb": 2.0,
         },
         "medium": {
             "repo_id": "lmstudio-community/Qwen2.5-Coder-7B-Instruct-GGUF",
             "filename": "*q4_0.gguf",
             "description": "7B parameters, balanced performance",
-            "size_gb": 4.5
+            "size_gb": 4.5,
         },
         "large": {
             "repo_id": "lmstudio-community/Qwen2.5-Coder-14B-Instruct-GGUF",
             "filename": "*q4_0.gguf",
             "description": "14B parameters, best quality",
-            "size_gb": 9.0
-        }
+            "size_gb": 9.0,
+        },
     }
 
     def __init__(self, config: LLMConfig | None = None):
@@ -56,10 +60,10 @@ class LocalLLM:
     def load_model(self, model_path: str | None = None) -> bool:
         """
         Load the LLM model.
-        
+
         Args:
             model_path: Path to GGUF model file
-        
+
         Returns:
             True if model loaded successfully
         """
@@ -78,7 +82,7 @@ class LocalLLM:
                 n_ctx=self.config.n_ctx,
                 n_gpu_layers=self.config.n_gpu_layers,
                 verbose=self.config.verbose,
-                embedding=self.config.embedding
+                embedding=self.config.embedding,
             )
             self._loaded = True
             return True
@@ -89,10 +93,10 @@ class LocalLLM:
     def download_model(self, size: str = "small") -> str | None:
         """
         Download a model from Hugging Face Hub.
-        
+
         Args:
             size: Model size (small, medium, large)
-        
+
         Returns:
             Path to downloaded model or None
         """
@@ -112,11 +116,11 @@ class LocalLLM:
             llm = Llama.from_pretrained(
                 repo_id=model_info["repo_id"],
                 filename=model_info["filename"],
-                verbose=self.config.verbose
+                verbose=self.config.verbose,
             )
 
             # Get the model path from the loaded model
-            model_path = str(llm.model_path) if hasattr(llm, 'model_path') else None
+            model_path = str(llm.model_path) if hasattr(llm, "model_path") else None
             print("Model downloaded successfully")
             return model_path
         except Exception as e:
@@ -126,10 +130,10 @@ class LocalLLM:
     def analyze_intent(self, query: str) -> str:
         """
         Analyze the intent of a query using local LLM.
-        
+
         Args:
             query: User query
-        
+
         Returns:
             Detected intent (explore, debug, modify, refactor)
         """
@@ -145,12 +149,7 @@ Task: {query}
 Intent:"""
 
         try:
-            response = self.llm(
-                prompt,
-                max_tokens=10,
-                stop=["\n", "."],
-                echo=False
-            )
+            response = self.llm(prompt, max_tokens=10, stop=["\n", "."], echo=False)
             intent = response["choices"][0]["text"].strip().lower()
 
             if intent in ["explore", "debug", "modify", "refactor"]:
@@ -164,15 +163,23 @@ Intent:"""
         query_lower = query.lower()
 
         # Debugging indicators
-        if any(word in query_lower for word in ["error", "bug", "fix", "crash", "fail", "exception"]):
+        if any(
+            word in query_lower for word in ["error", "bug", "fix", "crash", "fail", "exception"]
+        ):
             return "debug"
 
         # Refactoring indicators
-        if any(word in query_lower for word in ["refactor", "clean", "optimize", "improve", "restructure"]):
+        if any(
+            word in query_lower
+            for word in ["refactor", "clean", "optimize", "improve", "restructure"]
+        ):
             return "refactor"
 
         # Modification indicators
-        if any(word in query_lower for word in ["add", "change", "update", "modify", "implement", "create"]):
+        if any(
+            word in query_lower
+            for word in ["add", "change", "update", "modify", "implement", "create"]
+        ):
             return "modify"
 
         # Default to explore
@@ -181,18 +188,18 @@ Intent:"""
     def compress_context(self, context: str, max_tokens: int = 2000) -> str:
         """
         Compress context to fit within token limits.
-        
+
         Args:
             context: Original context
             max_tokens: Maximum tokens for output
-        
+
         Returns:
             Compressed context
         """
         if not self._loaded or not self.llm:
             # Simple truncation fallback
             words = context.split()
-            return " ".join(words[:max_tokens // 2])
+            return " ".join(words[: max_tokens // 2])
 
         prompt = f"""Compress the following code context to key information.
 Keep: function signatures, class definitions, imports, key comments.
@@ -204,25 +211,20 @@ Original context:
 Compressed context:"""
 
         try:
-            response = self.llm(
-                prompt,
-                max_tokens=max_tokens,
-                stop=["\n\n\n"],
-                echo=False
-            )
+            response = self.llm(prompt, max_tokens=max_tokens, stop=["\n\n\n"], echo=False)
             return response["choices"][0]["text"].strip()
         except Exception:
             # Fallback to simple truncation
             words = context.split()
-            return " ".join(words[:max_tokens // 2])
+            return " ".join(words[: max_tokens // 2])
 
     def generate_summary(self, code: str) -> str:
         """
         Generate a summary of code.
-        
+
         Args:
             code: Code to summarize
-        
+
         Returns:
             Code summary
         """
@@ -238,12 +240,7 @@ Code:
 Summary:"""
 
         try:
-            response = self.llm(
-                prompt,
-                max_tokens=100,
-                stop=["\n\n"],
-                echo=False
-            )
+            response = self.llm(prompt, max_tokens=100, stop=["\n\n"], echo=False)
             return response["choices"][0]["text"].strip()
         except Exception:
             return self._simple_summary(code)
@@ -278,11 +275,13 @@ Summary:"""
             "status": "loaded",
             "model_path": str(self.config.model_path),
             "context_size": self.config.n_ctx,
-            "gpu_layers": self.config.n_gpu_layers
+            "gpu_layers": self.config.n_gpu_layers,
         }
+
 
 # Global LLM instance
 _global_llm: LocalLLM | None = None
+
 
 def get_llm() -> LocalLLM:
     """Get or create global LLM instance."""
@@ -291,15 +290,15 @@ def get_llm() -> LocalLLM:
         _global_llm = LocalLLM()
     return _global_llm
 
-def init_llm(model_path: str | None = None,
-             n_gpu_layers: int = 0) -> LocalLLM:
+
+def init_llm(model_path: str | None = None, n_gpu_layers: int = 0) -> LocalLLM:
     """
     Initialize the global LLM.
-    
+
     Args:
         model_path: Path to GGUF model
         n_gpu_layers: Number of GPU layers (-1 for all)
-    
+
     Returns:
         Initialized LLM instance
     """

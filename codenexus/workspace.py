@@ -11,15 +11,19 @@ from .parser import CodeParser
 @dataclass
 class RepoConfig:
     """Repository configuration."""
+
     alias: str
     path: Path
     description: str = ""
 
+
 @dataclass
 class WorkspaceConfig:
     """Workspace configuration."""
+
     name: str
     repos: list[RepoConfig] = field(default_factory=list)
+
 
 class MultiRepoWorkspace:
     """Manage multiple repositories as a unified workspace."""
@@ -41,11 +45,14 @@ class MultiRepoWorkspace:
                     data = json.load(f)
                     self.config = WorkspaceConfig(
                         name=data.get("name", "default"),
-                        repos=[RepoConfig(
-                            alias=r["alias"],
-                            path=Path(r["path"]),
-                            description=r.get("description", "")
-                        ) for r in data.get("repos", [])]
+                        repos=[
+                            RepoConfig(
+                                alias=r["alias"],
+                                path=Path(r["path"]),
+                                description=r.get("description", ""),
+                            )
+                            for r in data.get("repos", [])
+                        ],
                     )
             except Exception as e:
                 print(f"Error loading workspace config: {e}")
@@ -60,13 +67,9 @@ class MultiRepoWorkspace:
         data = {
             "name": self.config.name,
             "repos": [
-                {
-                    "alias": r.alias,
-                    "path": str(r.path),
-                    "description": r.description
-                }
+                {"alias": r.alias, "path": str(r.path), "description": r.description}
                 for r in self.config.repos
-            ]
+            ],
         }
 
         with open(self.config_path, "w") as f:
@@ -75,12 +78,12 @@ class MultiRepoWorkspace:
     def add_repo(self, alias: str, path: Path, description: str = "") -> bool:
         """
         Add a repository to the workspace.
-        
+
         Args:
             alias: Short name for the repo
             path: Path to the repository
             description: Optional description
-        
+
         Returns:
             True if added successfully
         """
@@ -98,11 +101,9 @@ class MultiRepoWorkspace:
             print(f"Path does not exist: {path}")
             return False
 
-        self.config.repos.append(RepoConfig(
-            alias=alias,
-            path=path.absolute(),
-            description=description
-        ))
+        self.config.repos.append(
+            RepoConfig(alias=alias, path=path.absolute(), description=description)
+        )
 
         self.save_config()
         return True
@@ -110,10 +111,10 @@ class MultiRepoWorkspace:
     def remove_repo(self, alias: str) -> bool:
         """
         Remove a repository from the workspace.
-        
+
         Args:
             alias: Repository alias to remove
-        
+
         Returns:
             True if removed successfully
         """
@@ -150,10 +151,10 @@ class MultiRepoWorkspace:
     def index_repo(self, alias: str) -> int:
         """
         Index a single repository.
-        
+
         Args:
             alias: Repository alias
-        
+
         Returns:
             Number of files indexed
         """
@@ -175,8 +176,16 @@ class MultiRepoWorkspace:
 
         # Get source files
         extensions = {".py", ".js", ".jsx", ".ts", ".tsx", ".go", ".rs", ".java", ".cs"}
-        skip_dirs = {"node_modules", ".git", "__pycache__", "venv", ".venv",
-                     "dist", "build", ".codenexus"}
+        skip_dirs = {
+            "node_modules",
+            ".git",
+            "__pycache__",
+            "venv",
+            ".venv",
+            "dist",
+            "build",
+            ".codenexus",
+        }
 
         source_files = []
         for ext in extensions:
@@ -216,7 +225,7 @@ class MultiRepoWorkspace:
     def index_all(self) -> dict[str, int]:
         """
         Index all repositories in the workspace.
-        
+
         Returns:
             Dictionary mapping repo alias to file count
         """
@@ -231,16 +240,15 @@ class MultiRepoWorkspace:
 
         return results
 
-    def search(self, query: str, repos: list[str] | None = None,
-               limit: int = 10) -> list[dict]:
+    def search(self, query: str, repos: list[str] | None = None, limit: int = 10) -> list[dict]:
         """
         Search across repositories.
-        
+
         Args:
             query: Search query
             repos: List of repo aliases to search (None = all)
             limit: Max results per repo
-        
+
         Returns:
             List of search results with repo info
         """
@@ -259,11 +267,7 @@ class MultiRepoWorkspace:
             nodes = graph.search_nodes(query, limit=limit)
 
             for node in nodes:
-                results.append({
-                    "repo": alias,
-                    "node": node,
-                    "score": node.centrality_score
-                })
+                results.append({"repo": alias, "node": node, "score": node.centrality_score})
 
         # Sort by score
         results.sort(key=lambda x: x["score"], reverse=True)
@@ -273,11 +277,13 @@ class MultiRepoWorkspace:
     def get_cross_repo_dependencies(self) -> dict[str, list[str]]:
         """
         Detect dependencies between repositories.
-        
+
         Returns:
             Dictionary mapping repo to list of dependent repos
         """
-        dependencies: dict[str, set] = {r.alias: set() for r in (self.config.repos if self.config else [])}
+        dependencies: dict[str, set] = {
+            r.alias: set() for r in (self.config.repos if self.config else [])
+        }
 
         if not self.config:
             return dependencies
@@ -302,16 +308,15 @@ class MultiRepoWorkspace:
 
         return {k: list(v) for k, v in dependencies.items()}
 
-    def get_impact_analysis(self, repo: str, node_id: str,
-                            depth: int = 2) -> dict:
+    def get_impact_analysis(self, repo: str, node_id: str, depth: int = 2) -> dict:
         """
         Analyze impact across repositories.
-        
+
         Args:
             repo: Repository alias
             node_id: Node ID to analyze
             depth: Depth of analysis
-        
+
         Returns:
             Impact analysis results
         """
@@ -334,11 +339,9 @@ class MultiRepoWorkspace:
                     if node:
                         related = dep_graph.search_nodes(node.name, limit=5)
                         for rel in related:
-                            cross_repo_impact.append({
-                                "repo": dep_repo,
-                                "node": rel.name,
-                                "file": rel.file_path
-                            })
+                            cross_repo_impact.append(
+                                {"repo": dep_repo, "node": rel.name, "file": rel.file_path}
+                            )
 
         impact["cross_repo"] = cross_repo_impact
         impact["total"] += len(cross_repo_impact)
@@ -355,16 +358,12 @@ class MultiRepoWorkspace:
             graph = self._get_repo_graph(repo.alias)
             node_count = graph.conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
 
-            repo_status.append({
-                "alias": repo.alias,
-                "path": str(repo.path),
-                "nodes": node_count
-            })
+            repo_status.append({"alias": repo.alias, "path": str(repo.path), "nodes": node_count})
 
         return {
             "name": self.config.name,
             "repos": len(self.config.repos),
-            "repo_status": repo_status
+            "repo_status": repo_status,
         }
 
     def close(self):

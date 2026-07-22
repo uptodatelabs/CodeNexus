@@ -10,6 +10,7 @@ from pathlib import Path
 
 class DecisionType(Enum):
     """Types of decisions to track."""
+
     CODE_CHANGE = "code_change"
     ARCHITECTURE = "architecture"
     BUG_FIX = "bug_fix"
@@ -17,9 +18,11 @@ class DecisionType(Enum):
     FEATURE = "feature"
     CONFIG = "config"
 
+
 @dataclass
 class Session:
     """Session information."""
+
     id: str
     name: str
     start_time: datetime
@@ -28,9 +31,11 @@ class Session:
     files_changed: list[str] = field(default_factory=list)
     decisions: list[dict] = field(default_factory=list)
 
+
 @dataclass
 class Decision:
     """Decision record."""
+
     id: str
     session_id: str
     decision_type: DecisionType
@@ -39,6 +44,7 @@ class Decision:
     files_affected: list[str]
     timestamp: datetime
     tags: list[str] = field(default_factory=list)
+
 
 class SessionMemory:
     """Manages session memory and decision tracking."""
@@ -60,7 +66,7 @@ class SessionMemory:
                 summary TEXT,
                 files_changed TEXT DEFAULT '[]'
             );
-            
+
             CREATE TABLE IF NOT EXISTS decisions (
                 id TEXT PRIMARY KEY,
                 session_id TEXT NOT NULL,
@@ -72,7 +78,7 @@ class SessionMemory:
                 tags TEXT DEFAULT '[]',
                 FOREIGN KEY (session_id) REFERENCES sessions(id)
             );
-            
+
             CREATE TABLE IF NOT EXISTS memories (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 session_id TEXT,
@@ -82,7 +88,7 @@ class SessionMemory:
                 timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (session_id) REFERENCES sessions(id)
             );
-            
+
             CREATE TABLE IF NOT EXISTS file_changes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 session_id TEXT,
@@ -92,7 +98,7 @@ class SessionMemory:
                 timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (session_id) REFERENCES sessions(id)
             );
-            
+
             CREATE INDEX IF NOT EXISTS idx_decisions_session ON decisions(session_id);
             CREATE INDEX IF NOT EXISTS idx_memories_session ON memories(session_id);
             CREATE INDEX IF NOT EXISTS idx_file_changes_session ON file_changes(session_id);
@@ -104,33 +110,33 @@ class SessionMemory:
         session_id = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         start_time = datetime.now()
 
-        self.conn.execute("""
+        self.conn.execute(
+            """
             INSERT INTO sessions (id, name, start_time)
             VALUES (?, ?, ?)
-        """, (session_id, name, start_time.isoformat()))
+        """,
+            (session_id, name, start_time.isoformat()),
+        )
         self.conn.commit()
 
-        return Session(
-            id=session_id,
-            name=name,
-            start_time=start_time
-        )
+        return Session(id=session_id, name=name, start_time=start_time)
 
     def end_session(self, session_id: str, summary: str = ""):
         """End a session."""
         end_time = datetime.now()
 
-        self.conn.execute("""
+        self.conn.execute(
+            """
             UPDATE sessions SET end_time = ?, summary = ?
             WHERE id = ?
-        """, (end_time.isoformat(), summary, session_id))
+        """,
+            (end_time.isoformat(), summary, session_id),
+        )
         self.conn.commit()
 
     def get_session(self, session_id: str) -> Session | None:
         """Get session by ID."""
-        row = self.conn.execute(
-            "SELECT * FROM sessions WHERE id = ?", (session_id,)
-        ).fetchone()
+        row = self.conn.execute("SELECT * FROM sessions WHERE id = ?", (session_id,)).fetchone()
 
         if not row:
             return None
@@ -141,52 +147,65 @@ class SessionMemory:
             start_time=datetime.fromisoformat(row[2]),
             end_time=datetime.fromisoformat(row[3]) if row[3] else None,
             summary=row[4] or "",
-            files_changed=json.loads(row[5] or "[]")
+            files_changed=json.loads(row[5] or "[]"),
         )
 
     def get_recent_sessions(self, limit: int = 10) -> list[Session]:
         """Get recent sessions."""
-        rows = self.conn.execute("""
-            SELECT * FROM sessions 
-            ORDER BY start_time DESC 
+        rows = self.conn.execute(
+            """
+            SELECT * FROM sessions
+            ORDER BY start_time DESC
             LIMIT ?
-        """, (limit,)).fetchall()
+        """,
+            (limit,),
+        ).fetchall()
 
         sessions = []
         for row in rows:
-            sessions.append(Session(
-                id=row[0],
-                name=row[1],
-                start_time=datetime.fromisoformat(row[2]),
-                end_time=datetime.fromisoformat(row[3]) if row[3] else None,
-                summary=row[4] or "",
-                files_changed=json.loads(row[5] or "[]")
-            ))
+            sessions.append(
+                Session(
+                    id=row[0],
+                    name=row[1],
+                    start_time=datetime.fromisoformat(row[2]),
+                    end_time=datetime.fromisoformat(row[3]) if row[3] else None,
+                    summary=row[4] or "",
+                    files_changed=json.loads(row[5] or "[]"),
+                )
+            )
 
         return sessions
 
-    def add_decision(self, session_id: str, decision_type: DecisionType,
-                     description: str, rationale: str = "",
-                     files_affected: list[str] = None,
-                     tags: list[str] = None) -> Decision:
+    def add_decision(
+        self,
+        session_id: str,
+        decision_type: DecisionType,
+        description: str,
+        rationale: str = "",
+        files_affected: list[str] = None,
+        tags: list[str] = None,
+    ) -> Decision:
         """Add a decision to a session."""
         decision_id = f"decision_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}"
         timestamp = datetime.now()
 
-        self.conn.execute("""
+        self.conn.execute(
+            """
             INSERT INTO decisions (id, session_id, decision_type, description,
                                    rationale, files_affected, timestamp, tags)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            decision_id,
-            session_id,
-            decision_type.value,
-            description,
-            rationale,
-            json.dumps(files_affected or []),
-            timestamp.isoformat(),
-            json.dumps(tags or [])
-        ))
+        """,
+            (
+                decision_id,
+                session_id,
+                decision_type.value,
+                description,
+                rationale,
+                json.dumps(files_affected or []),
+                timestamp.isoformat(),
+                json.dumps(tags or []),
+            ),
+        )
         self.conn.commit()
 
         return Decision(
@@ -197,90 +216,102 @@ class SessionMemory:
             rationale=rationale,
             files_affected=files_affected or [],
             timestamp=timestamp,
-            tags=tags or []
+            tags=tags or [],
         )
 
     def get_decisions(self, session_id: str) -> list[Decision]:
         """Get all decisions in a session."""
-        rows = self.conn.execute("""
-            SELECT * FROM decisions 
+        rows = self.conn.execute(
+            """
+            SELECT * FROM decisions
             WHERE session_id = ?
             ORDER BY timestamp
-        """, (session_id,)).fetchall()
+        """,
+            (session_id,),
+        ).fetchall()
 
         decisions = []
         for row in rows:
-            decisions.append(Decision(
-                id=row[0],
-                session_id=row[1],
-                decision_type=DecisionType(row[2]),
-                description=row[3],
-                rationale=row[4] or "",
-                files_affected=json.loads(row[5] or "[]"),
-                timestamp=datetime.fromisoformat(row[6]),
-                tags=json.loads(row[7] or "[]")
-            ))
+            decisions.append(
+                Decision(
+                    id=row[0],
+                    session_id=row[1],
+                    decision_type=DecisionType(row[2]),
+                    description=row[3],
+                    rationale=row[4] or "",
+                    files_affected=json.loads(row[5] or "[]"),
+                    timestamp=datetime.fromisoformat(row[6]),
+                    tags=json.loads(row[7] or "[]"),
+                )
+            )
 
         return decisions
 
     def search_decisions(self, query: str) -> list[Decision]:
         """Search decisions by description."""
-        rows = self.conn.execute("""
-            SELECT * FROM decisions 
+        rows = self.conn.execute(
+            """
+            SELECT * FROM decisions
             WHERE description LIKE ? OR rationale LIKE ?
             ORDER BY timestamp DESC
-        """, (f"%{query}%", f"%{query}%")).fetchall()
+        """,
+            (f"%{query}%", f"%{query}%"),
+        ).fetchall()
 
         decisions = []
         for row in rows:
-            decisions.append(Decision(
-                id=row[0],
-                session_id=row[1],
-                decision_type=DecisionType(row[2]),
-                description=row[3],
-                rationale=row[4] or "",
-                files_affected=json.loads(row[5] or "[]"),
-                timestamp=datetime.fromisoformat(row[6]),
-                tags=json.loads(row[7] or "[]")
-            ))
+            decisions.append(
+                Decision(
+                    id=row[0],
+                    session_id=row[1],
+                    decision_type=DecisionType(row[2]),
+                    description=row[3],
+                    rationale=row[4] or "",
+                    files_affected=json.loads(row[5] or "[]"),
+                    timestamp=datetime.fromisoformat(row[6]),
+                    tags=json.loads(row[7] or "[]"),
+                )
+            )
 
         return decisions
 
-    def add_memory(self, session_id: str, key: str, value: str,
-                   context: str = ""):
+    def add_memory(self, session_id: str, key: str, value: str, context: str = ""):
         """Add a memory entry."""
-        self.conn.execute("""
+        self.conn.execute(
+            """
             INSERT INTO memories (session_id, key, value, context)
             VALUES (?, ?, ?, ?)
-        """, (session_id, key, value, context))
+        """,
+            (session_id, key, value, context),
+        )
         self.conn.commit()
 
     def get_memories(self, session_id: str) -> list[dict]:
         """Get all memories for a session."""
-        rows = self.conn.execute("""
-            SELECT * FROM memories 
+        rows = self.conn.execute(
+            """
+            SELECT * FROM memories
             WHERE session_id = ?
             ORDER BY timestamp
-        """, (session_id,)).fetchall()
+        """,
+            (session_id,),
+        ).fetchall()
 
         return [
-            {
-                "id": row[0],
-                "key": row[2],
-                "value": row[3],
-                "context": row[4],
-                "timestamp": row[5]
-            }
+            {"id": row[0], "key": row[2], "value": row[3], "context": row[4], "timestamp": row[5]}
             for row in rows
         ]
 
     def search_memories(self, query: str) -> list[dict]:
         """Search memories by key or value."""
-        rows = self.conn.execute("""
-            SELECT * FROM memories 
+        rows = self.conn.execute(
+            """
+            SELECT * FROM memories
             WHERE key LIKE ? OR value LIKE ? OR context LIKE ?
             ORDER BY timestamp DESC
-        """, (f"%{query}%", f"%{query}%", f"%{query}%")).fetchall()
+        """,
+            (f"%{query}%", f"%{query}%", f"%{query}%"),
+        ).fetchall()
 
         return [
             {
@@ -289,27 +320,34 @@ class SessionMemory:
                 "key": row[2],
                 "value": row[3],
                 "context": row[4],
-                "timestamp": row[5]
+                "timestamp": row[5],
             }
             for row in rows
         ]
 
-    def record_file_change(self, session_id: str, file_path: str,
-                          change_type: str, line_count: int = 0):
+    def record_file_change(
+        self, session_id: str, file_path: str, change_type: str, line_count: int = 0
+    ):
         """Record a file change."""
-        self.conn.execute("""
+        self.conn.execute(
+            """
             INSERT INTO file_changes (session_id, file_path, change_type, line_count)
             VALUES (?, ?, ?, ?)
-        """, (session_id, file_path, change_type, line_count))
+        """,
+            (session_id, file_path, change_type, line_count),
+        )
         self.conn.commit()
 
     def get_file_changes(self, session_id: str) -> list[dict]:
         """Get file changes for a session."""
-        rows = self.conn.execute("""
-            SELECT * FROM file_changes 
+        rows = self.conn.execute(
+            """
+            SELECT * FROM file_changes
             WHERE session_id = ?
             ORDER BY timestamp
-        """, (session_id,)).fetchall()
+        """,
+            (session_id,),
+        ).fetchall()
 
         return [
             {
@@ -317,7 +355,7 @@ class SessionMemory:
                 "file_path": row[2],
                 "change_type": row[3],
                 "line_count": row[4],
-                "timestamp": row[5]
+                "timestamp": row[5],
             }
             for row in rows
         ]
@@ -372,26 +410,18 @@ class SessionMemory:
 
     def get_statistics(self) -> dict:
         """Get overall statistics."""
-        session_count = self.conn.execute(
-            "SELECT COUNT(*) FROM sessions"
-        ).fetchone()[0]
+        session_count = self.conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
 
-        decision_count = self.conn.execute(
-            "SELECT COUNT(*) FROM decisions"
-        ).fetchone()[0]
+        decision_count = self.conn.execute("SELECT COUNT(*) FROM decisions").fetchone()[0]
 
-        memory_count = self.conn.execute(
-            "SELECT COUNT(*) FROM memories"
-        ).fetchone()[0]
+        memory_count = self.conn.execute("SELECT COUNT(*) FROM memories").fetchone()[0]
 
-        file_change_count = self.conn.execute(
-            "SELECT COUNT(*) FROM file_changes"
-        ).fetchone()[0]
+        file_change_count = self.conn.execute("SELECT COUNT(*) FROM file_changes").fetchone()[0]
 
         # Decision type distribution
         decision_types = self.conn.execute("""
-            SELECT decision_type, COUNT(*) 
-            FROM decisions 
+            SELECT decision_type, COUNT(*)
+            FROM decisions
             GROUP BY decision_type
         """).fetchall()
 
@@ -400,7 +430,7 @@ class SessionMemory:
             "decisions": decision_count,
             "memories": memory_count,
             "file_changes": file_change_count,
-            "decision_types": {row[0]: row[1] for row in decision_types}
+            "decision_types": {row[0]: row[1] for row in decision_types},
         }
 
     def close(self):
@@ -410,6 +440,7 @@ class SessionMemory:
 
 # Global memory instance
 _global_memory: SessionMemory | None = None
+
 
 def get_memory(db_path: Path | None = None) -> SessionMemory:
     """Get or create global memory instance."""

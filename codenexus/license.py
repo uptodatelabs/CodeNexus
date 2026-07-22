@@ -9,14 +9,17 @@ from pathlib import Path
 
 class LicenseTier(Enum):
     """License tier levels."""
+
     FREE = "free"
     PRO = "pro"
     TEAM = "team"
     ENTERPRISE = "enterprise"
 
+
 @dataclass
 class License:
     """License information."""
+
     tier: LicenseTier
     key: str
     owner: str
@@ -26,6 +29,7 @@ class License:
     def __post_init__(self):
         if self.features is None:
             self.features = []
+
 
 class LicenseManager:
     """Manage license validation and features."""
@@ -71,8 +75,10 @@ class LicenseManager:
                         tier=LicenseTier(data.get("tier", "free")),
                         key=data.get("key", ""),
                         owner=data.get("owner", ""),
-                        expires_at=datetime.fromisoformat(data["expires_at"]) if data.get("expires_at") else None,
-                        features=data.get("features", [])
+                        expires_at=datetime.fromisoformat(data["expires_at"])
+                        if data.get("expires_at")
+                        else None,
+                        features=data.get("features", []),
                     )
             except Exception:
                 self._license = None
@@ -88,8 +94,10 @@ class LicenseManager:
             "tier": self._license.tier.value,
             "key": self._license.key,
             "owner": self._license.owner,
-            "expires_at": self._license.expires_at.isoformat() if self._license.expires_at else None,
-            "features": self._license.features
+            "expires_at": self._license.expires_at.isoformat()
+            if self._license.expires_at
+            else None,
+            "features": self._license.features,
         }
 
         with open(self.config_path, "w") as f:
@@ -98,10 +106,10 @@ class LicenseManager:
     def activate_license(self, license_key: str) -> bool:
         """
         Activate a license key.
-        
+
         Args:
             license_key: License key to activate
-        
+
         Returns:
             True if activation successful
         """
@@ -130,10 +138,7 @@ class LicenseManager:
             return False
 
         self._license = License(
-            tier=LicenseTier(tier),
-            key=license_key,
-            owner=owner,
-            expires_at=expires_at
+            tier=LicenseTier(tier), key=license_key, owner=owner, expires_at=expires_at
         )
 
         self._save_license()
@@ -153,10 +158,10 @@ class LicenseManager:
     def has_feature(self, feature: str) -> bool:
         """
         Check if current tier has a feature.
-        
+
         Args:
             feature: Feature name
-        
+
         Returns:
             True if feature is available
         """
@@ -172,10 +177,10 @@ class LicenseManager:
     def get_limit(self, limit_name: str) -> int | None:
         """
         Get a limit for the current tier.
-        
+
         Args:
             limit_name: Limit name
-        
+
         Returns:
             Limit value or None for unlimited
         """
@@ -191,10 +196,10 @@ class LicenseManager:
     def check_feature(self, feature: str) -> bool:
         """
         Check feature and print message if not available.
-        
+
         Args:
             feature: Feature name
-        
+
         Returns:
             True if feature is available
         """
@@ -214,13 +219,16 @@ class LicenseManager:
         return {
             "tier": tier.value,
             "owner": self._license.owner if self._license else "",
-            "expires_at": self._license.expires_at.isoformat() if self._license and self._license.expires_at else None,
-            "is_valid": tier != LicenseTier.FREE or not self._license
+            "expires_at": self._license.expires_at.isoformat()
+            if self._license and self._license.expires_at
+            else None,
+            "is_valid": tier != LicenseTier.FREE or not self._license,
         }
 
 
 # Global license instance
 _global_license: LicenseManager | None = None
+
 
 def get_license() -> LicenseManager:
     """Get or create global license instance."""

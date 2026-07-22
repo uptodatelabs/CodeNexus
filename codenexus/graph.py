@@ -23,11 +23,13 @@ class Node:
         if self.dependencies is None:
             self.dependencies = []
 
+
 @dataclass
 class Edge:
     source_id: str
     target_id: str
     edge_type: str  # calls, imports, defines, etc.
+
 
 class DependencyGraph:
     """SQLite-based dependency graph with PageRank centrality."""
@@ -51,7 +53,7 @@ class DependencyGraph:
                 centrality_score REAL DEFAULT 0.0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
-            
+
             CREATE TABLE IF NOT EXISTS edges (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 source_id TEXT NOT NULL,
@@ -60,13 +62,13 @@ class DependencyGraph:
                 FOREIGN KEY (source_id) REFERENCES nodes(id),
                 FOREIGN KEY (target_id) REFERENCES nodes(id)
             );
-            
+
             CREATE TABLE IF NOT EXISTS centrality_cache (
                 node_id TEXT PRIMARY KEY,
                 score REAL,
                 computed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
-            
+
             CREATE INDEX IF NOT EXISTS idx_nodes_file ON nodes(file_path);
             CREATE INDEX IF NOT EXISTS idx_nodes_name ON nodes(name);
             CREATE INDEX IF NOT EXISTS idx_nodes_centrality ON nodes(centrality_score DESC);
@@ -90,80 +92,106 @@ class DependencyGraph:
         self.conn.commit()
 
     def add_node(self, node: Node):
-        self.conn.execute("""
-            INSERT OR REPLACE INTO nodes (id, file_path, name, node_type, 
+        self.conn.execute(
+            """
+            INSERT OR REPLACE INTO nodes (id, file_path, name, node_type,
                                           start_line, end_line, content, signature,
                                           centrality_score)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (node.id, node.file_path, node.name, node.node_type,
-              node.start_line, node.end_line, node.content, node.signature,
-              node.centrality_score))
+        """,
+            (
+                node.id,
+                node.file_path,
+                node.name,
+                node.node_type,
+                node.start_line,
+                node.end_line,
+                node.content,
+                node.signature,
+                node.centrality_score,
+            ),
+        )
 
         # Update FTS index if available
         try:
-            self.conn.execute("""
+            self.conn.execute(
+                """
                 INSERT OR REPLACE INTO nodes_fts (rowid, name, content, signature)
                 VALUES (
                     (SELECT rowid FROM nodes WHERE id = ?),
                     ?, ?, ?
                 )
-            """, (node.id, node.name, node.content, node.signature))
+            """,
+                (node.id, node.name, node.content, node.signature),
+            )
         except Exception:
             pass
 
         self.conn.commit()
 
     def add_edge(self, edge: Edge):
-        self.conn.execute("""
+        self.conn.execute(
+            """
             INSERT INTO edges (source_id, target_id, edge_type)
             VALUES (?, ?, ?)
-        """, (edge.source_id, edge.target_id, edge.edge_type))
+        """,
+            (edge.source_id, edge.target_id, edge.edge_type),
+        )
         self.conn.commit()
 
     def get_node(self, node_id: str) -> Node | None:
-        row = self.conn.execute(
-            "SELECT * FROM nodes WHERE id = ?", (node_id,)
-        ).fetchone()
+        row = self.conn.execute("SELECT * FROM nodes WHERE id = ?", (node_id,)).fetchone()
         if row:
             return Node(*row[:9])  # centrality_score 포함
         return None
 
     def get_dependents(self, node_id: str) -> list[Node]:
-        rows = self.conn.execute("""
+        rows = self.conn.execute(
+            """
             SELECT n.* FROM nodes n
             JOIN edges e ON n.id = e.source_id
             WHERE e.target_id = ?
-        """, (node_id,)).fetchall()
+        """,
+            (node_id,),
+        ).fetchall()
         return [Node(*row[:9]) for row in rows]
 
     def get_dependencies(self, node_id: str) -> list[Node]:
-        rows = self.conn.execute("""
+        rows = self.conn.execute(
+            """
             SELECT n.* FROM nodes n
             JOIN edges e ON n.id = e.target_id
             WHERE e.source_id = ?
-        """, (node_id,)).fetchall()
+        """,
+            (node_id,),
+        ).fetchall()
         return [Node(*row[:9]) for row in rows]
 
-    def search_nodes(self, query: str, limit: int = 10,
-                     use_centrality: bool = True) -> list[Node]:
+    def search_nodes(self, query: str, limit: int = 10, use_centrality: bool = True) -> list[Node]:
         """Search nodes with optional centrality ranking."""
         # Try FTS5 search first
         try:
             if use_centrality:
-                rows = self.conn.execute("""
+                rows = self.conn.execute(
+                    """
                     SELECT n.* FROM nodes n
                     JOIN nodes_fts fts ON n.rowid = fts.rowid
                     WHERE nodes_fts MATCH ?
                     ORDER BY n.centrality_score DESC
                     LIMIT ?
-                """, (query, limit)).fetchall()
+                """,
+                    (query, limit),
+                ).fetchall()
             else:
-                rows = self.conn.execute("""
+                rows = self.conn.execute(
+                    """
                     SELECT n.* FROM nodes n
                     JOIN nodes_fts fts ON n.rowid = fts.rowid
                     WHERE nodes_fts MATCH ?
                     LIMIT ?
-                """, (query, limit)).fetchall()
+                """,
+                    (query, limit),
+                ).fetchall()
 
             if rows:
                 return [Node(*row[:9]) for row in rows]
@@ -172,18 +200,24 @@ class DependencyGraph:
 
         # Fallback to LIKE search
         if use_centrality:
-            rows = self.conn.execute("""
-                SELECT * FROM nodes 
+            rows = self.conn.execute(
+                """
+                SELECT * FROM nodes
                 WHERE name LIKE ? OR content LIKE ? OR signature LIKE ?
                 ORDER BY centrality_score DESC
                 LIMIT ?
-            """, (f"%{query}%", f"%{query}%", f"%{query}%", limit)).fetchall()
+            """,
+                (f"%{query}%", f"%{query}%", f"%{query}%", limit),
+            ).fetchall()
         else:
-            rows = self.conn.execute("""
-                SELECT * FROM nodes 
+            rows = self.conn.execute(
+                """
+                SELECT * FROM nodes
                 WHERE name LIKE ? OR content LIKE ? OR signature LIKE ?
                 LIMIT ?
-            """, (f"%{query}%", f"%{query}%", f"%{query}%", limit)).fetchall()
+            """,
+                (f"%{query}%", f"%{query}%", f"%{query}%", limit),
+            ).fetchall()
 
         return [Node(*row[:9]) for row in rows]
 
@@ -193,17 +227,17 @@ class DependencyGraph:
             return ""
         return node.signature
 
-    def compute_pagerank(self, damping: float = 0.85,
-                         iterations: int = 20,
-                         tolerance: float = 1e-6) -> dict[str, float]:
+    def compute_pagerank(
+        self, damping: float = 0.85, iterations: int = 20, tolerance: float = 1e-6
+    ) -> dict[str, float]:
         """
         Compute PageRank centrality for all nodes.
-        
+
         Args:
             damping: Damping factor (probability of following a link)
             iterations: Maximum number of iterations
             tolerance: Convergence threshold
-        
+
         Returns:
             Dictionary mapping node_id to PageRank score
         """
@@ -257,51 +291,54 @@ class DependencyGraph:
 
         # Store scores in database
         for node_id, score in pr.items():
-            self.conn.execute("""
+            self.conn.execute(
+                """
                 UPDATE nodes SET centrality_score = ? WHERE id = ?
-            """, (score, node_id))
+            """,
+                (score, node_id),
+            )
 
             # Update cache
-            self.conn.execute("""
+            self.conn.execute(
+                """
                 INSERT OR REPLACE INTO centrality_cache (node_id, score)
                 VALUES (?, ?)
-            """, (node_id, score))
+            """,
+                (node_id, score),
+            )
 
         self.conn.commit()
         return pr
 
     def get_centrality_scores(self) -> dict[str, float]:
         """Get cached centrality scores."""
-        rows = self.conn.execute(
-            "SELECT node_id, score FROM centrality_cache"
-        ).fetchall()
+        rows = self.conn.execute("SELECT node_id, score FROM centrality_cache").fetchall()
         return {row[0]: row[1] for row in rows}
 
     def get_top_central_nodes(self, limit: int = 10) -> list[Node]:
         """Get nodes with highest centrality scores."""
-        rows = self.conn.execute("""
-            SELECT * FROM nodes 
-            ORDER BY centrality_score DESC 
+        rows = self.conn.execute(
+            """
+            SELECT * FROM nodes
+            ORDER BY centrality_score DESC
             LIMIT ?
-        """, (limit,)).fetchall()
+        """,
+            (limit,),
+        ).fetchall()
         return [Node(*row[:9]) for row in rows]
 
     def get_impact_graph(self, node_id: str, depth: int = 2) -> dict:
         """
         Get impact graph for a node (what would be affected by changes).
-        
+
         Args:
             node_id: Starting node
             depth: How many levels of dependencies to traverse
-        
+
         Returns:
             Dictionary with direct and indirect dependents
         """
-        impact = {
-            "direct": [],
-            "indirect": [],
-            "total_tokens": 0
-        }
+        impact = {"direct": [], "indirect": [], "total_tokens": 0}
 
         visited = set()
         queue = [(node_id, 0)]
@@ -316,27 +353,28 @@ class DependencyGraph:
 
             # Find nodes that DEPEND ON this node (callers)
             # edge: caller -> current_id (source -> target)
-            dependents = self.conn.execute("""
+            dependents = self.conn.execute(
+                """
                 SELECT n.* FROM nodes n
                 JOIN edges e ON n.id = e.source_id
                 WHERE e.target_id = ?
-            """, (current_id,)).fetchall()
+            """,
+                (current_id,),
+            ).fetchall()
 
             for row in dependents:
                 dep = Node(*row[:9])
                 if current_depth == 0:
-                    impact["direct"].append({
-                        "id": dep.id,
-                        "name": dep.name,
-                        "file": dep.file_path
-                    })
+                    impact["direct"].append({"id": dep.id, "name": dep.name, "file": dep.file_path})
                 else:
-                    impact["indirect"].append({
-                        "id": dep.id,
-                        "name": dep.name,
-                        "file": dep.file_path,
-                        "depth": current_depth
-                    })
+                    impact["indirect"].append(
+                        {
+                            "id": dep.id,
+                            "name": dep.name,
+                            "file": dep.file_path,
+                            "depth": current_depth,
+                        }
+                    )
 
                 if current_depth < depth:
                     queue.append((dep.id, current_depth + 1))
@@ -352,7 +390,7 @@ class DependencyGraph:
         """)
         try:
             self.conn.execute("DELETE FROM nodes_fts")
-        except:
+        except Exception:
             pass
         self.conn.commit()
 

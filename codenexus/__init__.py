@@ -12,10 +12,25 @@ from .server import CodeNexusServer
 from .workspace import MultiRepoWorkspace, RepoConfig, WorkspaceConfig
 
 __all__ = [
-    "DependencyGraph", "Node", "Edge",
-    "CodeParser", "CodeNexusServer",
-    "LocalLLM", "LLMConfig", "get_llm", "init_llm", "LLAMA_CPP_AVAILABLE",
-    "MultiRepoWorkspace", "WorkspaceConfig", "RepoConfig",
-    "SessionMemory", "Session", "Decision", "DecisionType", "get_memory",
-    "LicenseManager", "LicenseTier", "get_license"
+    "DependencyGraph",
+    "Node",
+    "Edge",
+    "CodeParser",
+    "CodeNexusServer",
+    "LocalLLM",
+    "LLMConfig",
+    "get_llm",
+    "init_llm",
+    "LLAMA_CPP_AVAILABLE",
+    "MultiRepoWorkspace",
+    "WorkspaceConfig",
+    "RepoConfig",
+    "SessionMemory",
+    "Session",
+    "Decision",
+    "DecisionType",
+    "get_memory",
+    "LicenseManager",
+    "LicenseTier",
+    "get_license",
 ]

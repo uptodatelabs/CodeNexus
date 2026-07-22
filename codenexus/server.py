@@ -17,9 +17,13 @@ from .parser import CodeParser, create_capsule
 class CodeNexusServer:
     """MCP server providing context tools for AI agents."""
 
-    def __init__(self, workspace_path: Path, max_workers: int = 4,
-                 llm_model_path: str | None = None,
-                 use_llm: bool = False):
+    def __init__(
+        self,
+        workspace_path: Path,
+        max_workers: int = 4,
+        llm_model_path: str | None = None,
+        use_llm: bool = False,
+    ):
         self.workspace = workspace_path
         self.db_path = workspace_path / ".codenexus" / "index.db"
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -80,11 +84,14 @@ class CodeNexusServer:
                         "type": "object",
                         "properties": {
                             "task": {"type": "string", "description": "Task description"},
-                            "preset": {"type": "string", "enum": ["auto", "explore", "debug", "modify"]},
+                            "preset": {
+                                "type": "string",
+                                "enum": ["auto", "explore", "debug", "modify"],
+                            },
                             "max_tokens": {"type": "integer", "default": 8000},
                         },
-                        "required": ["task"]
-                    }
+                        "required": ["task"],
+                    },
                 ),
                 Tool(
                     name="get_context_capsule",
@@ -95,8 +102,8 @@ class CodeNexusServer:
                             "query": {"type": "string"},
                             "max_tokens": {"type": "integer", "default": 8000},
                         },
-                        "required": ["query"]
-                    }
+                        "required": ["query"],
+                    },
                 ),
                 Tool(
                     name="get_skeleton",
@@ -105,15 +112,18 @@ class CodeNexusServer:
                         "type": "object",
                         "properties": {
                             "file_path": {"type": "string"},
-                            "detail": {"type": "string", "enum": ["minimal", "standard", "detailed"]},
+                            "detail": {
+                                "type": "string",
+                                "enum": ["minimal", "standard", "detailed"],
+                            },
                         },
-                        "required": ["file_path"]
-                    }
+                        "required": ["file_path"],
+                    },
                 ),
                 Tool(
                     name="index_status",
                     description="Index health and statistics",
-                    inputSchema={"type": "object", "properties": {}}
+                    inputSchema={"type": "object", "properties": {}},
                 ),
             ]
 
@@ -162,12 +172,7 @@ class CodeNexusServer:
         nodes = nodes[:20]  # Limit to top 20
 
         # Build capsule
-        result = {
-            "task": task,
-            "pivot_files": [],
-            "skeletons": [],
-            "token_estimate": 0
-        }
+        result = {"task": task, "pivot_files": [], "skeletons": [], "token_estimate": 0}
 
         tokens_used = 0
         for node in nodes:
@@ -179,26 +184,19 @@ class CodeNexusServer:
             skeleton = node.signature + "\n..."
 
             if tokens_used + len(full_content.split()) * 1.3 < max_tokens * 0.6:
-                result["pivot_files"].append({
-                    "path": node.file_path,
-                    "name": node.name,
-                    "content": full_content
-                })
+                result["pivot_files"].append(
+                    {"path": node.file_path, "name": node.name, "content": full_content}
+                )
                 tokens_used += len(full_content.split()) * 1.3
             else:
-                result["skeletons"].append({
-                    "path": node.file_path,
-                    "name": node.name,
-                    "skeleton": skeleton
-                })
+                result["skeletons"].append(
+                    {"path": node.file_path, "name": node.name, "skeleton": skeleton}
+                )
                 tokens_used += len(skeleton.split()) * 1.3
 
         result["token_estimate"] = int(tokens_used)
 
-        return [TextContent(
-            type="text",
-            text=json.dumps(result, indent=2)
-        )]
+        return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
     async def _get_context_capsule(self, args: dict) -> list[TextContent]:
         """Get context capsule for a query."""
@@ -219,15 +217,11 @@ class CodeNexusServer:
             capsule_parts.append(f"=== {node.file_path}::{node.name} ===\n{skeleton}")
             tokens_used += len(skeleton.split()) * 1.3
 
-        return [TextContent(
-            type="text",
-            text="\n\n".join(capsule_parts)
-        )]
+        return [TextContent(type="text", text="\n\n".join(capsule_parts))]
 
     async def _get_skeleton(self, args: dict) -> list[TextContent]:
         """Get file skeleton."""
         file_path = args.get("file_path", "")
-        detail = args.get("detail", "standard")
 
         # Find nodes in file
         rows = self.graph.conn.execute(
@@ -242,10 +236,9 @@ class CodeNexusServer:
             node = Node(*row[:9])
             skeletons.append(f"{node.node_type} {node.name}: {node.signature}")
 
-        return [TextContent(
-            type="text",
-            text=f"=== Skeleton: {file_path} ===\n" + "\n".join(skeletons)
-        )]
+        return [
+            TextContent(type="text", text=f"=== Skeleton: {file_path} ===\n" + "\n".join(skeletons))
+        ]
 
     async def _index_status(self) -> list[TextContent]:
         """Get index status."""
@@ -255,22 +248,35 @@ class CodeNexusServer:
             "SELECT COUNT(DISTINCT file_path) FROM nodes"
         ).fetchone()[0]
 
-        return [TextContent(
-            type="text",
-            text=json.dumps({
-                "nodes": node_count,
-                "edges": edge_count,
-                "files": file_count,
-                "cached_files": len(self.file_cache),
-                "status": "healthy"
-            }, indent=2)
-        )]
+        return [
+            TextContent(
+                type="text",
+                text=json.dumps(
+                    {
+                        "nodes": node_count,
+                        "edges": edge_count,
+                        "files": file_count,
+                        "cached_files": len(self.file_cache),
+                        "status": "healthy",
+                    },
+                    indent=2,
+                ),
+            )
+        ]
 
     def _get_source_files(self) -> list[Path]:
         """Get all source files in workspace."""
         extensions = {".py", ".js", ".jsx", ".ts", ".tsx", ".go", ".rs", ".java", ".cs"}
-        skip_dirs = {"node_modules", ".git", "__pycache__", "venv", ".venv",
-                     "dist", "build", ".codenexus"}
+        skip_dirs = {
+            "node_modules",
+            ".git",
+            "__pycache__",
+            "venv",
+            ".venv",
+            "dist",
+            "build",
+            ".codenexus",
+        }
 
         source_files = []
         for ext in extensions:
@@ -291,7 +297,7 @@ class CodeNexusServer:
     def index_workspace(self, incremental: bool = True):
         """
         Index all files in workspace.
-        
+
         Args:
             incremental: If True, only index changed files
         """

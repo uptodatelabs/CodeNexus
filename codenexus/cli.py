@@ -16,10 +16,11 @@ from .server import CodeNexusServer
 
 # Fix Windows console encoding
 if sys.platform == "win32":
-    sys.stdout.reconfigure(encoding='utf-8')
-    sys.stderr.reconfigure(encoding='utf-8')
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
 
 console = Console()
+
 
 @click.group()
 @click.option("--workspace", "-w", default=".", help="Workspace path")
@@ -27,11 +28,12 @@ console = Console()
 @click.pass_context
 def main(ctx, workspace):
     """CodeNexus: The context engine for AI coding agents.
-    
+
     Reduce token usage by 50-70% while improving code context quality.
     """
     ctx.ensure_object(dict)
     ctx.obj["workspace"] = Path(workspace).resolve()
+
 
 @main.command()
 @click.option("--full", "-f", is_flag=True, help="Full re-index (ignore cache)")
@@ -46,7 +48,7 @@ def index(ctx, full, workers):
         TextColumn("[progress.description]{task.description}"),
         console=console,
     ) as progress:
-        task = progress.add_task("[cyan]Indexing workspace...", total=None)
+        _task = progress.add_task("[cyan]Indexing workspace...", total=None)  # noqa: F841
 
         server = CodeNexusServer(workspace, max_workers=workers)
         start_time = time.time()
@@ -57,6 +59,7 @@ def index(ctx, full, workers):
         console.print(f"[bold green]✓ Indexed {count} files in {elapsed:.2f}s[/]")
     else:
         console.print("[yellow]No new files to index[/]")
+
 
 @main.command()
 @click.argument("query")
@@ -92,10 +95,11 @@ def search(ctx, query, max_tokens, top):
             node.name,
             node.node_type,
             f"{node.start_line}-{node.end_line}",
-            f"{node.centrality_score:.4f}"
+            f"{node.centrality_score:.4f}",
         )
 
     console.print(table)
+
 
 @main.command()
 @click.argument("task")
@@ -107,12 +111,11 @@ def pipeline(ctx, task, max_tokens):
     server = CodeNexusServer(workspace)
 
     import asyncio
-    result = asyncio.run(server._run_pipeline({
-        "task": task,
-        "max_tokens": max_tokens
-    }))
+
+    result = asyncio.run(server._run_pipeline({"task": task, "max_tokens": max_tokens}))
 
     console.print(Panel(result[0].text, title="Context Capsule"))
+
 
 @main.command()
 @click.pass_context
@@ -128,18 +131,16 @@ def status(ctx):
     graph = DependencyGraph(db_path)
     node_count = graph.conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
     edge_count = graph.conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0]
-    file_count = graph.conn.execute(
-        "SELECT COUNT(DISTINCT file_path) FROM nodes"
-    ).fetchone()[0]
+    file_count = graph.conn.execute("SELECT COUNT(DISTINCT file_path) FROM nodes").fetchone()[0]
 
     # Get centrality stats
-    avg_centrality = graph.conn.execute(
-        "SELECT AVG(centrality_score) FROM nodes"
-    ).fetchone()[0] or 0
+    avg_centrality = (
+        graph.conn.execute("SELECT AVG(centrality_score) FROM nodes").fetchone()[0] or 0
+    )
 
-    max_centrality = graph.conn.execute(
-        "SELECT MAX(centrality_score) FROM nodes"
-    ).fetchone()[0] or 0
+    max_centrality = (
+        graph.conn.execute("SELECT MAX(centrality_score) FROM nodes").fetchone()[0] or 0
+    )
 
     # Get node type distribution
     type_dist = graph.conn.execute(
@@ -168,6 +169,7 @@ def status(ctx):
             type_table.add_row(node_type, str(count))
 
         console.print(type_table)
+
 
 @main.command()
 @click.argument("symbol")
@@ -211,6 +213,7 @@ def impact(ctx, symbol, depth):
 
     console.print(f"\n[bold]Total Impact: {impact['total']}[/]")
 
+
 @main.command()
 @click.option("--depth", "-d", default=10, help="Number of top nodes to show")
 @click.pass_context
@@ -239,14 +242,11 @@ def top(ctx, depth):
 
     for i, node in enumerate(nodes, 1):
         table.add_row(
-            str(i),
-            node.name,
-            node.node_type,
-            node.file_path,
-            f"{node.centrality_score:.6f}"
+            str(i), node.name, node.node_type, node.file_path, f"{node.centrality_score:.6f}"
         )
 
     console.print(table)
+
 
 @main.command()
 @click.pass_context
@@ -266,6 +266,7 @@ def serve(ctx):
     # Run MCP server (simplified - real implementation would use stdio)
     console.print("[bold blue]MCP server ready. Use with Claude Code or other agents.[/]")
 
+
 @main.command()
 @click.pass_context
 def clear(ctx):
@@ -282,15 +283,21 @@ def clear(ctx):
 
     console.print("[bold green]✓ Index cleared[/]")
 
+
 @main.group()
 def llm():
     """Local LLM commands for enhanced context."""
     pass
 
+
 @llm.command()
-@click.option("--size", "-s", default="small",
-              type=click.Choice(["small", "medium", "large"]),
-              help="Model size to download")
+@click.option(
+    "--size",
+    "-s",
+    default="small",
+    type=click.Choice(["small", "medium", "large"]),
+    help="Model size to download",
+)
 def download(size):
     """Download a local LLM model."""
     from .llm import LLMConfig, LocalLLM
@@ -304,6 +311,7 @@ def download(size):
         console.print(f"[bold green]✓ Model downloaded: {model_path}[/]")
     else:
         console.print("[red]Failed to download model[/]")
+
 
 @llm.command()
 @click.argument("model_path")
@@ -325,6 +333,7 @@ def serve(model_path, gpu):
     else:
         console.print("[red]Failed to load model[/]")
 
+
 @llm.command()
 @click.argument("query")
 def analyze(query):
@@ -336,6 +345,7 @@ def analyze(query):
 
     console.print(f"[bold]Query: {query}[/]")
     console.print(f"[green]Detected intent: {intent}[/]")
+
 
 @llm.command()
 def status():
@@ -355,10 +365,12 @@ def status():
     else:
         console.print("  Model: not loaded")
 
+
 @main.group()
 def workspace():
     """Multi-repo workspace commands."""
     pass
+
 
 @workspace.command()
 @click.argument("name")
@@ -373,6 +385,7 @@ def init(name):
 
     console.print(f"[bold green]✓ Workspace '{name}' initialized[/]")
     console.print(f"Config: {ws.config_path}")
+
 
 @workspace.command()
 @click.argument("alias")
@@ -390,6 +403,7 @@ def add(alias, path, description):
     else:
         console.print(f"[red]Failed to add repository '{alias}'[/]")
 
+
 @workspace.command()
 @click.argument("alias")
 def remove(alias):
@@ -403,6 +417,7 @@ def remove(alias):
         console.print(f"[bold green]✓ Repository '{alias}' removed[/]")
     else:
         console.print(f"[red]Failed to remove repository '{alias}'[/]")
+
 
 @workspace.command()
 @click.option("--repo", "-r", help="Specific repo to index (default: all)")
@@ -428,6 +443,7 @@ def index(repo):
             console.print(f"  {alias}: {count} files")
 
     console.print("[bold green]✓ Indexing complete[/]")
+
 
 @workspace.command()
 @click.argument("query")
@@ -461,14 +477,11 @@ def search(query, repos, limit):
     for result in results:
         node = result["node"]
         table.add_row(
-            result["repo"],
-            node.name,
-            node.node_type,
-            node.file_path,
-            f"{result['score']:.4f}"
+            result["repo"], node.name, node.node_type, node.file_path, f"{result['score']:.4f}"
         )
 
     console.print(table)
+
 
 @workspace.command()
 def status():
@@ -488,20 +501,17 @@ def status():
     console.print(f"Repositories: {info['repos']}")
     console.print()
 
-    if info['repo_status']:
+    if info["repo_status"]:
         table = Table(title="Repository Status")
         table.add_column("Alias", style="cyan")
         table.add_column("Path", style="green")
         table.add_column("Nodes", style="yellow")
 
-        for repo in info['repo_status']:
-            table.add_row(
-                repo['alias'],
-                repo['path'],
-                str(repo['nodes'])
-            )
+        for repo in info["repo_status"]:
+            table.add_row(repo["alias"], repo["path"], str(repo["nodes"]))
 
         console.print(table)
+
 
 @workspace.command()
 def deps():
@@ -528,10 +538,12 @@ def deps():
         else:
             console.print(f"[cyan]{repo}[/]: no dependencies")
 
+
 @main.group()
 def memory():
     """Session memory and decision tracking."""
     pass
+
 
 @memory.command()
 @click.argument("name")
@@ -544,6 +556,7 @@ def start(name):
 
     console.print(f"[bold green]✓ Session started: {session.id}[/]")
     console.print(f"Name: {session.name}")
+
 
 @memory.command()
 @click.argument("session_id")
@@ -563,14 +576,18 @@ def end(session_id, summary):
 
     console.print(f"[bold green]✓ Session ended: {session_id}[/]")
 
+
 @memory.command()
 @click.argument("session_id")
 @click.argument("description")
-@click.option("--type", "-t", "decision_type",
-              type=click.Choice(["code_change", "architecture", "bug_fix",
-                                 "refactor", "feature", "config"]),
-              default="code_change",
-              help="Decision type")
+@click.option(
+    "--type",
+    "-t",
+    "decision_type",
+    type=click.Choice(["code_change", "architecture", "bug_fix", "refactor", "feature", "config"]),
+    default="code_change",
+    help="Decision type",
+)
 @click.option("--rationale", "-r", default="", help="Decision rationale")
 @click.option("--files", "-f", multiple=True, help="Files affected")
 @click.option("--tags", multiple=True, help="Tags")
@@ -580,17 +597,13 @@ def decide(session_id, description, decision_type, rationale, files, tags):
 
     mem = get_memory()
     decision = mem.add_decision(
-        session_id,
-        DecisionType(decision_type),
-        description,
-        rationale,
-        list(files),
-        list(tags)
+        session_id, DecisionType(decision_type), description, rationale, list(files), list(tags)
     )
 
     console.print(f"[bold green]✓ Decision recorded: {decision.id}[/]")
     console.print(f"Type: {decision_type}")
     console.print(f"Description: {description}")
+
 
 @memory.command()
 @click.argument("session_id")
@@ -617,10 +630,11 @@ def sessions(limit):
             s.id,
             s.name,
             s.start_time.strftime("%Y-%m-%d %H:%M"),
-            s.end_time.strftime("%Y-%m-%d %H:%M") if s.end_time else "ongoing"
+            s.end_time.strftime("%Y-%m-%d %H:%M") if s.end_time else "ongoing",
         )
 
     console.print(table)
+
 
 @memory.command()
 @click.argument("session_id")
@@ -644,10 +658,11 @@ def decisions(session_id):
         table.add_row(
             d.decision_type.value,
             d.description[:50] + "..." if len(d.description) > 50 else d.description,
-            str(len(d.files_affected))
+            str(len(d.files_affected)),
         )
 
     console.print(table)
+
 
 @memory.command()
 @click.argument("query")
@@ -676,6 +691,7 @@ def search(query):
         console.print("[bold]Memories:[/]")
         for m in memories[:5]:
             console.print(f"  {m['key']}: {m['value'][:50]}...")
+
 
 @memory.command()
 def stats():
@@ -706,6 +722,7 @@ def stats():
 
         console.print(type_table)
 
+
 @memory.command()
 @click.argument("session_id")
 def summary(session_id):
@@ -721,10 +738,12 @@ def summary(session_id):
 
     console.print(Panel(summary, title="Session Summary"))
 
+
 @main.group()
 def license():
     """License management commands."""
     pass
+
 
 @license.command()
 def status():
@@ -744,6 +763,7 @@ def status():
 
     console.print(table)
 
+
 @license.command()
 @click.argument("license_key")
 def activate(license_key):
@@ -759,6 +779,7 @@ def activate(license_key):
     else:
         console.print("[red]Failed to activate license[/]")
         console.print("Please check your license key and try again.")
+
 
 @license.command()
 def features():
@@ -791,6 +812,7 @@ def features():
 
     console.print(table)
 
+
 @license.command()
 def upgrade():
     """Show upgrade information."""
@@ -808,6 +830,7 @@ def upgrade():
     console.print("  • Annual: $190/year (save 17%)")
     console.print()
     console.print("Purchase at: https://codenexus.dev/pricing")
+
 
 if __name__ == "__main__":
     main()
