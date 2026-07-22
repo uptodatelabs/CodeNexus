@@ -355,5 +355,178 @@ def status():
     else:
         console.print("  Model: not loaded")
 
+@main.group()
+def workspace():
+    """Multi-repo workspace commands."""
+    pass
+
+@workspace.command()
+@click.argument("name")
+def init(name):
+    """Initialize a new workspace."""
+    from .workspace import MultiRepoWorkspace, WorkspaceConfig
+    
+    workspace_path = Path.cwd()
+    ws = MultiRepoWorkspace(workspace_path)
+    ws.config = WorkspaceConfig(name=name)
+    ws.save_config()
+    
+    console.print(f"[bold green]✓ Workspace '{name}' initialized[/]")
+    console.print(f"Config: {ws.config_path}")
+
+@workspace.command()
+@click.argument("alias")
+@click.argument("path", type=click.Path(exists=True))
+@click.option("--description", "-d", default="", help="Repository description")
+def add(alias, path, description):
+    """Add a repository to the workspace."""
+    from .workspace import MultiRepoWorkspace
+    
+    workspace_path = Path.cwd()
+    ws = MultiRepoWorkspace(workspace_path)
+    
+    if ws.add_repo(alias, Path(path), description):
+        console.print(f"[bold green]✓ Repository '{alias}' added[/]")
+    else:
+        console.print(f"[red]Failed to add repository '{alias}'[/]")
+
+@workspace.command()
+@click.argument("alias")
+def remove(alias):
+    """Remove a repository from the workspace."""
+    from .workspace import MultiRepoWorkspace
+    
+    workspace_path = Path.cwd()
+    ws = MultiRepoWorkspace(workspace_path)
+    
+    if ws.remove_repo(alias):
+        console.print(f"[bold green]✓ Repository '{alias}' removed[/]")
+    else:
+        console.print(f"[red]Failed to remove repository '{alias}'[/]")
+
+@workspace.command()
+@click.option("--repo", "-r", help="Specific repo to index (default: all)")
+def index(repo):
+    """Index all repositories in the workspace."""
+    from .workspace import MultiRepoWorkspace
+    
+    workspace_path = Path.cwd()
+    ws = MultiRepoWorkspace(workspace_path)
+    
+    if not ws.config:
+        console.print("[red]No workspace found. Run 'codenexus workspace init' first.[/]")
+        return
+    
+    console.print(f"[bold blue]Indexing workspace: {ws.config.name}[/]")
+    
+    if repo:
+        count = ws.index_repo(repo)
+        console.print(f"  {repo}: {count} files")
+    else:
+        results = ws.index_all()
+        for alias, count in results.items():
+            console.print(f"  {alias}: {count} files")
+    
+    console.print("[bold green]✓ Indexing complete[/]")
+
+@workspace.command()
+@click.argument("query")
+@click.option("--repos", "-r", multiple=True, help="Specific repos to search")
+@click.option("--limit", "-l", default=10, help="Max results per repo")
+def search(query, repos, limit):
+    """Search across repositories."""
+    from .workspace import MultiRepoWorkspace
+    
+    workspace_path = Path.cwd()
+    ws = MultiRepoWorkspace(workspace_path)
+    
+    if not ws.config:
+        console.print("[red]No workspace found. Run 'codenexus workspace init' first.[/]")
+        return
+    
+    repo_list = list(repos) if repos else None
+    results = ws.search(query, repos=repo_list, limit=limit)
+    
+    if not results:
+        console.print(f"[yellow]No results for: {query}[/]")
+        return
+    
+    table = Table(title=f"Cross-repo Search: {query}")
+    table.add_column("Repo", style="cyan")
+    table.add_column("Name", style="green")
+    table.add_column("Type", style="magenta")
+    table.add_column("File", style="yellow")
+    table.add_column("Score", style="blue")
+    
+    for result in results:
+        node = result["node"]
+        table.add_row(
+            result["repo"],
+            node.name,
+            node.node_type,
+            node.file_path,
+            f"{result['score']:.4f}"
+        )
+    
+    console.print(table)
+
+@workspace.command()
+def status():
+    """Show workspace status."""
+    from .workspace import MultiRepoWorkspace
+    
+    workspace_path = Path.cwd()
+    ws = MultiRepoWorkspace(workspace_path)
+    
+    if not ws.config:
+        console.print("[yellow]No workspace found.[/]")
+        return
+    
+    info = ws.get_status()
+    
+    console.print(f"[bold]Workspace: {info['name']}[/]")
+    console.print(f"Repositories: {info['repos']}")
+    console.print()
+    
+    if info['repo_status']:
+        table = Table(title="Repository Status")
+        table.add_column("Alias", style="cyan")
+        table.add_column("Path", style="green")
+        table.add_column("Nodes", style="yellow")
+        
+        for repo in info['repo_status']:
+            table.add_row(
+                repo['alias'],
+                repo['path'],
+                str(repo['nodes'])
+            )
+        
+        console.print(table)
+
+@workspace.command()
+def deps():
+    """Show cross-repo dependencies."""
+    from .workspace import MultiRepoWorkspace
+    
+    workspace_path = Path.cwd()
+    ws = MultiRepoWorkspace(workspace_path)
+    
+    if not ws.config:
+        console.print("[yellow]No workspace found.[/]")
+        return
+    
+    deps = ws.get_cross_repo_dependencies()
+    
+    console.print("[bold]Cross-repo Dependencies[/]")
+    console.print()
+    
+    for repo, dep_list in deps.items():
+        if dep_list:
+            console.print(f"[cyan]{repo}[/] depends on:")
+            for dep in dep_list:
+                console.print(f"  → {dep}")
+        else:
+            console.print(f"[cyan]{repo}[/]: no dependencies")
+
 if __name__ == "__main__":
     main()
