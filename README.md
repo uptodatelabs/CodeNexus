@@ -80,54 +80,54 @@ AI Agent (Claude Code, Cursor, etc.)
 
 ## Claude Code Integration
 
-CodeNexus는 Claude Code와 연동하여 AI 코딩 에이전트의 토큰 사용량을 줄입니다.
+CodeNexus works with Claude Code to reduce token usage for AI coding agents.
 
-### 설정 방법
+### Setup
 
-#### 1. CodeNexus 설치
+#### 1. Install CodeNexus
 
 ```bash
 pip install codenexus-ai
 ```
 
-#### 2. `.claude.json` 파일 편집
+#### 2. Edit `.claude.json`
 
-**파일 위치:**
+**File location:**
 - macOS/Linux: `~/.claude.json`
-- Windows: `C:\Users\사용자이름\.claude.json`
+- Windows: `C:\Users\your-username\.claude.json`
 
-#### 3. 설정 추가
+#### 3. Add configuration
 
-`~/.claude.json` 파일에 다음 내용을 추가하세요:
+Add the following to your `~/.claude.json`:
 
 ```json
 {
   "mcpServers": {
     "codenexus": {
       "command": "codenexus",
-      "args": ["serve", "-w", "여기에_프로젝트_경로"]
+      "args": ["serve", "-w", "/path/to/your/project"]
     }
   }
 }
 ```
 
-**⚠️ 중요: `여기에_프로젝트_경로`는 CodeNexus를 사용할 프로젝트의 경로입니다.**
+**⚠️ Important: `/path/to/your/project` should be the path to the project where you want to use CodeNexus.**
 
-### 경로 설정 예시
+### Path Examples
 
-**❌ 잘못된 예시:**
+**❌ Wrong:**
 ```json
 "args": ["serve", "-w", "C:\\Users\\username\\.codenexus"]
 ```
-→ CodeNexus 설정 디렉토리 (오류)
+→ CodeNexus config directory (incorrect)
 
-**✅ 올바른 예시:**
+**✅ Correct:**
 ```json
 "args": ["serve", "-w", "C:\\Users\\username\\projects\\my-app"]
 ```
-→ CodeNexus를 사용할 프로젝트 디렉토리
+→ Project directory where you want to use CodeNexus
 
-### OS별 경로 예시
+### OS-specific Path Examples
 
 **Windows:**
 ```json
@@ -153,9 +153,9 @@ pip install codenexus-ai
 }
 ```
 
-### 여러 프로젝트 설정
+### Multiple Projects
 
-여러 프로젝트에서 CodeNexus를 사용하려면, 각 프로젝트별로 설정을 추가하세요:
+To use CodeNexus with multiple projects, add configuration for each project:
 
 ```json
 {
@@ -180,32 +180,32 @@ pip install codenexus-ai
 }
 ```
 
-### 설정 확인
+### Verify Setup
 
-1. `.claude.json` 파일 저장
-2. Claude Code 재시작
-3. CodeNexus를 사용할 프로젝트 디렉토리에서 Claude 실행
+1. Save `.claude.json`
+2. Restart Claude Code
+3. Run Claude in your project directory
 
 ```bash
 cd C:\Users\username\projects\my-app
 claude
 ```
 
-### 문제 해결
+### Troubleshooting
 
-**MCP 서버가 연결되지 않는 경우:**
+**If MCP server doesn't connect:**
 
-1. CodeNexus가 설치되어 있는지 확인:
+1. Check if CodeNexus is installed:
    ```bash
    pip show codenexus-ai
    ```
 
-2. 코드 실행 테스트:
+2. Test code execution:
    ```bash
    codenexus --version
    ```
 
-3. 경로가 올바른지 확인 (따옴표 주의)
+3. Verify the path is correct (watch for quotes)
 
 ---
 
