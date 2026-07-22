@@ -184,4 +184,13 @@ AI 에이전트 (Claude Code, Cursor 등)
 
 ---
 
+## 지원
+
+CodeNexus가 유용하다면 프로젝트 지원을 고려해주세요:
+
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-ffdd00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://www.buymeacoffee.com/uptodatelabs)
+[![Sponsor](https://img.shields.io/badge/Sponsor-CodeNexus-ea4aaa?style=for-the-badge&logo=githubsponsors&logoColor=white)](https://github.com/sponsors/uptodatelabs)
+
+---
+
 **코드를 연결하세요. AI를 강화하세요.**
