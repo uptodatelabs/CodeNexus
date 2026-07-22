@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "codenexus"
+name = "codenexus-ai"
 version = "1.0.0"
 description = "The context engine for AI coding agents - reduce tokens by 50-70%"
 readme = "README.md"
