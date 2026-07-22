@@ -50,7 +50,7 @@ The sidebar provides:
 
 ## Requirements
 
-- CodeNexus CLI installed (`pip install codenexus`)
+- CodeNexus AI CLI installed (`pip install codenexus-ai`)
 - Python 3.10+
 
 ## Extension Settings

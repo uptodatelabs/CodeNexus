@@ -50,11 +50,11 @@ llm = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/poroporo2/CodeNexus"
-Documentation = "https://github.com/poroporo2/CodeNexus#readme"
-Repository = "https://github.com/poroporo2/CodeNexus"
-Issues = "https://github.com/poroporo2/CodeNexus/issues"
-Changelog = "https://github.com/poroporo2/CodeNexus/releases"
+Homepage = "https://github.com/uptodatelabs/CodeNexus"
+Documentation = "https://github.com/uptodatelabs/CodeNexus#readme"
+Repository = "https://github.com/uptodatelabs/CodeNexus"
+Issues = "https://github.com/uptodatelabs/CodeNexus/issues"
+Changelog = "https://github.com/uptodatelabs/CodeNexus/releases"
 
 [project.scripts]
 codenexus = "codenexus.cli:main"

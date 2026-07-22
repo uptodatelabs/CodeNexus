@@ -1,16 +1,16 @@
 {
-  "name": "codenexus",
-  "displayName": "CodeNexus",
+  "name": "codenexus-ai",
+  "displayName": "CodeNexus AI",
   "description": "The context engine for AI coding agents - reduce tokens by 50-70%",
   "version": "0.1.0",
-  "publisher": "codenexus",
+  "publisher": "uptodatelabs",
   "author": {
-    "name": "CodeNexus Contributors"
+    "name": "uptodate.labs"
   },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/poroporo2/CodeNexus"
+    "url": "https://github.com/uptodatelabs/CodeNexus"
   },
   "engines": {
     "vscode": "^1.85.0"

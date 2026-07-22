@@ -1,9 +1,10 @@
-# CodeNexus
+# CodeNexus AI
 
 **AI 코딩 에이전트를 위한 컨텍스트 엔진**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![PyPI](https://img.shields.io/pypi/v/codenexus-ai.svg)](https://pypi.org/project/codenexus-ai/)
 
 [English](README.md) | [한국어](README.ko.md)
 
@@ -29,7 +30,7 @@ CodeNexus는 **로컬 우선 컨텍스트 엔진**으로, AI 코딩 에이전트
 ### 설치
 
 ```bash
-pip install codenexus
+pip install codenexus-ai
 ```
 
 ### 기본 사용법
