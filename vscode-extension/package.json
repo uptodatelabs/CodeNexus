@@ -1,0 +1,111 @@
+{
+  "name": "codenexus",
+  "displayName": "CodeNexus",
+  "description": "The context engine for AI coding agents - reduce tokens by 50-70%",
+  "version": "0.1.0",
+  "publisher": "codenexus",
+  "author": {
+    "name": "CodeNexus Contributors"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/poroporo2/CodeNexus"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other",
+    "Programming Languages"
+  ],
+  "keywords": [
+    "ai",
+    "coding",
+    "context",
+    "mcp",
+    "code-analysis",
+    "tokens"
+  ],
+  "activationEvents": [
+    "onLanguage:python",
+    "onLanguage:javascript",
+    "onLanguage:typescript",
+    "onLanguage:go",
+    "onLanguage:rust",
+    "onLanguage:java",
+    "onLanguage:csharp",
+    "workspaceContains:**/.codenexus/**"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "codenexus.index",
+        "title": "CodeNexus: Index Workspace"
+      },
+      {
+        "command": "codenexus.search",
+        "title": "CodeNexus: Search Context"
+      },
+      {
+        "command": "codenexus.status",
+        "title": "CodeNexus: Show Status"
+      },
+      {
+        "command": "codenexus.clear",
+        "title": "CodeNexus: Clear Index"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "codenexus",
+          "title": "CodeNexus",
+          "icon": "$(graph)"
+        }
+      ]
+    },
+    "views": {
+      "codenexus": [
+        {
+          "type": "webview",
+          "id": "codenexus.sidebar",
+          "name": "CodeNexus"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "CodeNexus",
+      "properties": {
+        "codenexus.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable CodeNexus extension"
+        },
+        "codenexus.autoIndex": {
+          "type": "boolean",
+          "default": true,
+          "description": "Auto-index on file save"
+        },
+        "codenexus.maxTokens": {
+          "type": "number",
+          "default": 8000,
+          "description": "Maximum tokens for context capsule"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0",
+    "eslint": "^8.0.0"
+  }
+}
