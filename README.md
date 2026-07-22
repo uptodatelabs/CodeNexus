@@ -223,6 +223,110 @@ claude
 
 ---
 
+## Other AI Agent Integration
+
+CodeNexus works with various AI coding agents. Here's how to integrate with other popular tools.
+
+### OpenClaw Integration
+
+[OpenClaw](https://github.com/openclaw/openclaw) is a personal AI assistant that connects to WhatsApp, Telegram, Slack, Discord, and more.
+
+#### Setup
+
+OpenClaw doesn't support MCP directly. Use CodeNexus CLI commands through OpenClaw's skill system.
+
+**1. Install CodeNexus:**
+
+```bash
+pip install codenexus-ai
+```
+
+**2. Create OpenClaw skill:**
+
+Create `~/.openclaw/workspace/skills/codenexus/SKILL.md`:
+
+```markdown
+---
+name: codenexus
+description: Search and analyze code using CodeNexus
+allowed_tools:
+  - bash
+---
+
+# CodeNexus Skill
+
+Use CodeNexus to search and analyze code in the workspace.
+
+## Commands
+
+- `codenexus index` - Index the workspace
+- `codenexus search "query"` - Search for code
+- `codenexus pipeline "task"` - Get context for a task
+```
+
+**3. Usage in OpenClaw:**
+
+```
+/codenexus search "authentication middleware"
+/codenexus pipeline "fix login bug"
+```
+
+### Hermes Agent Integration
+
+[Hermes Agent](https://github.com/NousResearch/hermes-agent) is a self-improving AI agent by Nous Research.
+
+#### Setup
+
+Hermes supports MCP servers. Configure CodeNexus as an MCP server.
+
+**1. Install CodeNexus:**
+
+```bash
+pip install codenexus-ai
+```
+
+**2. Add MCP server to Hermes:**
+
+```bash
+hermes mcp add codenexus -- codenexus serve -w /path/to/your/project
+```
+
+Or add to `~/.hermes/config.yaml`:
+
+```yaml
+mcp_servers:
+  codenexus:
+    command: codenexus
+    args:
+      - serve
+      - -w
+      - /path/to/your/project
+```
+
+**3. Usage in Hermes:**
+
+```
+/hermes search "authentication middleware"
+/hermes pipeline "fix login bug"
+```
+
+### Other Agents
+
+Any agent that supports CLI commands can use CodeNexus:
+
+```bash
+# Direct CLI usage
+codenexus index
+codenexus search "query"
+codenexus pipeline "task"
+codenexus status
+
+# JSON output for programmatic use
+codenexus search "query" --json
+```
+
+---
+
 ## Token Savings Example
 
 **Before CodeNexus:**

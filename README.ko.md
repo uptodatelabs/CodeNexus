@@ -231,6 +231,110 @@ claude
 
 ---
 
+## 다른 AI 에이전트 연동
+
+CodeNexus는 다양한 AI 코딩 에이전트와 함께 사용할 수 있습니다.
+
+### OpenClaw 연동
+
+[OpenClaw](https://github.com/openclaw/openclaw)는 WhatsApp, Telegram, Slack, Discord 등과 연결되는 개인 AI 어시스턴트입니다.
+
+#### 설정 방법
+
+OpenClaw는 MCP를 직접 지원하지 않습니다. 스킬 시스템을 통해 CLI 명령어를 사용합니다.
+
+**1. CodeNexus 설치:**
+
+```bash
+pip install codenexus-ai
+```
+
+**2. OpenClaw 스킬 생성:**
+
+`~/.openclaw/workspace/skills/codenexus/SKILL.md` 파일 생성:
+
+```markdown
+---
+name: codenexus
+description: CodeNexus로 코드 검색 및 분석
+allowed_tools:
+  - bash
+---
+
+# CodeNexus 스킬
+
+CodeNexus를 사용하여 워크스페이스의 코드를 검색하고 분석합니다.
+
+## 명령어
+
+- `codenexus index` - 워크스페이스 인덱싱
+- `codenexus search "query"` - 코드 검색
+- `codenexus pipeline "task"` - 태스크용 컨텍스트 생성
+```
+
+**3. OpenClaw에서 사용:**
+
+```
+/codenexus search "인증 미들웨어"
+/codenexus pipeline "로그인 버그 수정"
+```
+
+### Hermes Agent 연동
+
+[Hermes Agent](https://github.com/NousResearch/hermes-agent)는 Nous Research의 자기 개선 AI 에이전트입니다.
+
+#### 설정 방법
+
+Hermes는 MCP 서버를 지원합니다. CodeNexus를 MCP 서버로 설정하세요.
+
+**1. CodeNexus 설치:**
+
+```bash
+pip install codenexus-ai
+```
+
+**2. MCP 서버 추가:**
+
+```bash
+hermes mcp add codenexus -- codenexus serve -w /path/to/your/project
+```
+
+또는 `~/.hermes/config.yaml`에 추가:
+
+```yaml
+mcp_servers:
+  codenexus:
+    command: codenexus
+    args:
+      - serve
+      - -w
+      - /path/to/your/project
+```
+
+**3. Hermes에서 사용:**
+
+```
+/hermes search "인증 미들웨어"
+/hermes pipeline "로그인 버그 수정"
+```
+
+### 다른 에이전트
+
+CLI 명령어를 지원하는 모든 에이전트에서 사용 가능:
+
+```bash
+# 직접 CLI 사용
+codenexus index
+codenexus search "query"
+codenexus pipeline "task"
+codenexus status
+
+# 프로그래밍 방식 사용을 위한 JSON 출력
+codenexus search "query" --json
+```
+
+---
+
 ## 토큰 절감 예시
 
 **CodeNexus 사용 전:**
