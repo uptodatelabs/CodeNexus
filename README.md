@@ -32,6 +32,17 @@ CodeNexus is a **local-first context engine** that helps AI coding agents unders
 pip install codenexus-ai
 ```
 
+**Developing from source (recommended for local edits):** install in editable
+mode so changes in this repo are picked up immediately. A non-editable
+`pip install .` copies the code into `site-packages` and will silently keep
+running the old copy even after you edit files here.
+
+```bash
+git clone https://github.com/uptodatelabs/CodeNexus.git
+cd CodeNexus
+pip install -e .
+```
+
 ### Basic Usage
 
 ```bash
