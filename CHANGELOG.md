@@ -5,7 +5,15 @@ All notable changes to CodeNexus will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.1.7] - 2026-07-24
+## [1.1.19] - 2026-07-24
+
+### Changed
+- Bumped version to 1.1.19.
+
+### Docs
+- Documented that local development must use `pip install -e .` (editable). A non-editable `pip install .` copies the code into `site-packages` and silently keeps running the stale copy even after repo edits — which previously made `wizard clear` appear location-dependent (it only saw the cwd's `.codenexus`).
+
+## [1.1.18] - 2026-07-24
 
 ### Fixed
 - **Impact/PageRank was always 0 (critical bug).** `DependencyGraph` built nodes from `SELECT *` rows with `Node(*row[:9])`, but the `nodes` table has `created_at` as the 10th column, so the `centrality_score` column was silently dropped from the `Node` object. Added `Node.from_row()` and replaced all `Node(*row)` call sites so centrality scores are now loaded correctly.
