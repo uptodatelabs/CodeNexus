@@ -450,13 +450,40 @@ class AgentWizard:
 
         # Special handling for OpenClaw
         if agent_type == AgentType.OPENCLAW:
-            return self._apply_openclaw_config(config, project_path)
-
+            result = self._apply_openclaw_config(config, project_path)
         # For MCP-based agents
-        if info.mcp_support:
-            return self._apply_mcp_config(info, config)
-
-        return False
+        elif info.mcp_support:
+            result = self._apply_mcp_config(info, config)
+        else:
+            result = False
+        
+        # Auto-index after successful config
+        if result:
+            self._auto_index(project_path)
+        
+        return result
+    
+    def _auto_index(self, project_path):
+        """Automatically index the project after config."""
+        import subprocess
+        import sys
+        
+        print(f"\n[INFO] Indexing project: {project_path}")
+        try:
+            result = subprocess.run(
+                ["codenexus", "-w", str(project_path), "index"],
+                capture_output=True,
+                text=True,
+                timeout=120
+            )
+            if result.returncode == 0:
+                print(f"[SUCCESS] Project indexed successfully")
+            else:
+                print(f"[WARNING] Indexing completed with warnings")
+        except subprocess.TimeoutExpired:
+            print(f"[WARNING] Indexing timed out")
+        except FileNotFoundError:
+            print(f"[WARNING] codenexus not found in PATH")
 
     def _apply_openclaw_config(self, config, project_path):
         """Apply OpenClaw skill configuration."""
