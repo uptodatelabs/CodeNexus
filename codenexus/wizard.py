@@ -507,6 +507,14 @@ Use CodeNexus to search and analyze code in the workspace.
         """Apply MCP configuration for an agent."""
         config_path = Path(info.config_file).expanduser()
         
+        # Safety check: Don't overwrite YAML files with JSON
+        if config_path.suffix in ['.yaml', '.yml']:
+            print(f"[WARNING] {info.name} uses YAML config format.")
+            print(f"[INFO] Skipping auto-apply for {info.name}.")
+            print(f"[INFO] Please configure manually or use the CLI command:")
+            print(f"  {info.cli_command} codenexus -- codenexus serve -w <project_path>")
+            return False
+        
         # Create parent directory
         config_path.parent.mkdir(parents=True, exist_ok=True)
         
