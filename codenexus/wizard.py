@@ -39,8 +39,8 @@ AGENTS = {
     AgentType.OPENCLAW: AgentInfo(
         name="OpenClaw",
         agent_type=AgentType.OPENCLAW,
-        config_file="~/.openclaw/workspace/skills",
-        mcp_support=False,
+        config_file="~/.openclaw/workspace/skills/codenexus/SKILL.md",
+        mcp_support=True,
         cli_command="openclaw skill add",
         description="Personal AI assistant with messaging integration"
     ),
@@ -137,6 +137,18 @@ class AgentWizard:
         }
         if agent_type in [AgentType.CLAUDE_CODE]:
             return {"mcpServers": base_config}
+        elif agent_type == AgentType.OPENCLAW:
+            # OpenClaw uses skill system, generate SKILL.md content
+            return {"skill": {
+                "name": "codenexus",
+                "description": "Search and analyze code using CodeNexus",
+                "allowed_tools": ["bash"],
+                "commands": {
+                    "index": f"codenexus index -w {project_path}",
+                    "search": f"codenexus search",
+                    "pipeline": f"codenexus pipeline"
+                }
+            }}
         elif agent_type in [AgentType.HERMES]:
             return {"mcp_servers": base_config}
         elif agent_type in [AgentType.CURSOR, AgentType.WINDSURF]:
@@ -172,13 +184,22 @@ class AgentWizard:
         print(f"\nDescription: {info.description}")
         print(f"Config file: {info.config_file}")
         if info.mcp_support:
-            print(f"\nMCP Configuration:")
+            print(f"\nMCP/Skill Configuration:")
             config = self.generate_mcp_config(agent_type, project_path)
             print(json.dumps(config, indent=2))
         if info.cli_command:
             print(f"\nCLI Command:")
             cmd = self.generate_cli_command(agent_type, project_path)
             print(cmd)
+        # Special instructions for OpenClaw
+        if agent_type == AgentType.OPENCLAW:
+            print(f"\nOpenClaw Skill Setup:")
+            print(f"1. Create skill directory:")
+            print(f"   mkdir -p ~/.openclaw/workspace/skills/codenexus")
+            print(f"\n2. Create SKILL.md with the configuration above")
+            print(f"\n3. Use in OpenClaw:")
+            print(f"   /codenexus search 'authentication middleware'")
+            print(f"   /codenexus pipeline 'fix login bug'")
         print(f"\n{'='*60}\n")
 
     def interactive_setup(self):
