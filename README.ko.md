@@ -381,6 +381,14 @@ codenexus wizard setup codex
 codenexus wizard interactive
 ```
 
+### 인덱스 삭제
+
+```bash
+codenexus wizard clear
+```
+
+인덱스 디렉토리를 표시하고, 선택적으로 삭제할 수 있습니다.
+
 ---
 
 ## 토큰 절감 예시

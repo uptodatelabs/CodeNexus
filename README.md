@@ -381,6 +381,16 @@ codenexus wizard setup codex
 # And more...
 ```
 
+**Note:** Setup will automatically index your project after configuration.
+
+### Clear Index Data
+
+```bash
+codenexus wizard clear
+```
+
+This will show all index directories and let you select which ones to clear.
+
 ### Interactive Setup
 
 ```bash
