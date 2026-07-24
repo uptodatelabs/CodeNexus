@@ -350,7 +350,7 @@ class CodeNexusServer:
 
         # Write to the graph sequentially on the main thread to avoid
         # cross-thread SQLite connection races that break PageRank scoring.
-        for file_path, nodes, edges in parse_results:
+        for _file_path, nodes, edges in parse_results:
             for node in nodes:
                 self.graph.add_node(node)
             for edge in edges:

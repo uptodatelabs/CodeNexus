@@ -5,7 +5,6 @@ import sys
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Optional, Dict, List
 
 
 class AgentType(Enum):
@@ -127,8 +126,8 @@ class AgentWizard:
 
     def __init__(self):
         self.workspace = Path.cwd()
-    
-    def get_indexed_projects(self) -> Dict[str, List[Dict]]:
+
+    def get_indexed_projects(self) -> dict[str, list[dict]]:
         """Get all indexed projects from all detected agents."""
         from .agent_parser import get_all_indexed_projects
         return get_all_indexed_projects()
