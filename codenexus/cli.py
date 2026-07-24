@@ -870,18 +870,27 @@ def list():
 @wizard.command()
 @click.argument("agent_name")
 @click.option("--project", "-p", default=".", help="Project path")
-def setup(agent_name, project):
+@click.option("--apply/--no-apply", default=False, help="Apply configuration automatically")
+def setup(agent_name, project, apply):
     """Setup a specific AI agent."""
     from .wizard import AgentWizard, get_agent_by_name
-
+    
     agent_type = get_agent_by_name(agent_name)
     if not agent_type:
         console.print(f"[red]Unknown agent: {agent_name}[/]")
         console.print("[dim]Use 'codenexus wizard list' to see supported agents[/]")
         return
-
+    
     wiz = AgentWizard()
     wiz.print_setup_guide(agent_type, Path(project).resolve())
+    
+    if apply:
+        console.print("\n[yellow]Applying configuration...[/]")
+        success = wiz.apply_config(agent_type, Path(project).resolve())
+        if success:
+            console.print("[green]Configuration applied and project indexed![/]")
+        else:
+            console.print("[red]Failed to apply configuration[/]")
 
 
 @wizard.command()

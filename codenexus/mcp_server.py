@@ -17,7 +17,7 @@ class CodeNexusMCPServer:
     PROTOCOL_VERSION = "2024-11-05"
     SERVER_INFO = {
         "name": "codenexus",
-        "version": "1.1.8"
+        "version": "1.1.11"
     }
     
     TOOLS = [
