@@ -20,7 +20,7 @@ class CodeNexusMCPServer:
     """MCP Server implementing stdio JSON-RPC protocol."""
 
     PROTOCOL_VERSION = "2024-11-05"
-    SERVER_INFO = {"name": "codenexus", "version": "1.1.19"}
+    SERVER_INFO = {"name": "codenexus", "version": "1.1.20"}
 
     TOOLS = [
         {
