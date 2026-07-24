@@ -111,25 +111,62 @@ AGENTS = {
 }
 
 class AgentWizard:
+    """Setup wizard for AI coding agents."""
+    
+    # OpenClaw potential config locations
+    OPENCLAW_PATHS = [
+        "~/.openclaw",
+        "~/.config/openclaw",
+        "/etc/openclaw",
+        "./.openclaw",
+    ]
+    
     def __init__(self):
         self.workspace = Path.cwd()
-
+    
+    def _find_openclaw_path(self) -> Optional[Path]:
+        """Find OpenClaw installation path."""
+        import os
+        
+        # Check environment variable first
+        env_path = os.environ.get("OPENCLAW_HOME") or os.environ.get("OPENCLAW_CONFIG")
+        if env_path:
+            path = Path(env_path).expanduser()
+            if path.exists():
+                return path
+        
+        # Check common locations
+        for path_str in self.OPENCLAW_PATHS:
+            path = Path(path_str).expanduser()
+            if path.exists():
+                return path
+        
+        # Check current directory
+        local_path = self.workspace / ".openclaw"
+        if local_path.exists():
+            return local_path
+        
+        return None
+    
     def detect_installed_agents(self):
         installed = []
         for agent_type, info in AGENTS.items():
-            config_path = Path(info.config_file).expanduser()
-            # Check if config file exists OR immediate parent directories exist
-            # Stop at home directory to avoid false positives
-            home = Path.home()
-            check_path = config_path
-            found = False
-            while check_path != home and check_path != check_path.parent:
-                if check_path.exists():
-                    found = True
-                    break
-                check_path = check_path.parent
-            if found:
-                installed.append(agent_type)
+            if agent_type == AgentType.OPENCLAW:
+                # Special handling for OpenClaw
+                if self._find_openclaw_path():
+                    installed.append(agent_type)
+            else:
+                config_path = Path(info.config_file).expanduser()
+                home = Path.home()
+                check_path = config_path
+                found = False
+                while check_path != home and check_path != check_path.parent:
+                    if check_path.exists():
+                        found = True
+                        break
+                    check_path = check_path.parent
+                if found:
+                    installed.append(agent_type)
         return installed
 
     def get_agent_info(self, agent_type):
@@ -280,7 +317,13 @@ class AgentWizard:
     
     def _apply_openclaw_config(self, config, project_path):
         """Apply OpenClaw skill configuration."""
-        skill_dir = Path.home() / ".openclaw" / "workspace" / "skills" / "codenexus"
+        # Find OpenClaw path
+        openclaw_path = self._find_openclaw_path()
+        if not openclaw_path:
+            print("[ERROR] OpenClaw installation not found")
+            return False
+        
+        skill_dir = openclaw_path / "workspace" / "skills" / "codenexus"
         skill_file = skill_dir / "SKILL.md"
         
         # Create directory
