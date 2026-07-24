@@ -870,8 +870,7 @@ def list():
 @wizard.command()
 @click.argument("agent_name")
 @click.option("--project", "-p", default=".", help="Project path")
-@click.option("--apply/--no-apply", default=False, help="Apply configuration automatically")
-def setup(agent_name, project, apply):
+def setup(agent_name, project):
     """Setup a specific AI agent."""
     from .wizard import AgentWizard, get_agent_by_name
     
@@ -884,7 +883,9 @@ def setup(agent_name, project, apply):
     wiz = AgentWizard()
     wiz.print_setup_guide(agent_type, Path(project).resolve())
     
-    if apply:
+    # Ask to apply
+    apply = input("\nApply configuration and index project? (y/n): ").strip().lower()
+    if apply == "y" or apply == "yes":
         console.print("\n[yellow]Applying configuration...[/]")
         success = wiz.apply_config(agent_type, Path(project).resolve())
         if success:
