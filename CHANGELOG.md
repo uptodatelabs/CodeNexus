@@ -5,6 +5,15 @@ All notable changes to CodeNexus will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.22] - 2026-07-25
+
+### Fixed
+- **GitHub Copilot integration bug.** `AgentType.COPILOT.config_file` pointed at `~/.github/copilot-instructions.md`. The wizard's `_apply_mcp_config` then tried to parse that markdown file as JSON and overwrote it with MCP content, destroying the user's Copilot instructions. Changed the path to the real Copilot CLI MCP config (`~/.copilot/mcp-config.json`) and added a guard in `_apply_mcp_config` that refuses to write any unsupported config format (anything other than `.json`/`.yaml`/`.yml`/`.toml`), printing a manual-setup hint instead of clobbering the file.
+
+### Added
+- Tests covering every supported agent's MCP config key and `apply_config` file write (`test_agent_mcp_config_keys`, `test_apply_mcp_config_writes_file`, `test_apply_mcp_config_skips_unsupported_format`).
+- Documented all 10 supported agents (config file + MCP key) and `wizard clear --all --yes` in README.
+
 ## [1.1.21] - 2026-07-24
 
 ### Fixed

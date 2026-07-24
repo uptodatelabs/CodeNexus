@@ -314,3 +314,78 @@ def test_impact_graph(graph):
     assert impact["total"] >= 1
     assert len(impact["direct"]) >= 1
     assert impact["direct"][0]["name"] == "caller"
+
+
+def test_agent_mcp_config_keys():
+    """Every MCP-capable agent returns a config with the right top-level key."""
+    from codenexus.wizard import AgentWizard, AgentType, AGENTS
+
+    w = AgentWizard()
+    proj = Path("/tmp/proj")
+    expected = {
+        AgentType.CLAUDE_CODE: "mcpServers",
+        AgentType.CURSOR: "mcpServers",
+        AgentType.WINDSURF: "mcpServers",
+        AgentType.COPILOT: "mcpServers",
+        AgentType.ZED: "mcpServers",
+        AgentType.CONTINUE: "mcpServers",
+        AgentType.AUGMENT: "mcpServers",
+        AgentType.HERMES: "mcp_servers",
+        AgentType.CODEX: "mcp_servers",
+        AgentType.OPENCLAW: "skill",
+    }
+    for at, key in expected.items():
+        cfg = w.generate_mcp_config(at, proj)
+        assert list(cfg.keys()) == [key], f"{at.value} -> {list(cfg.keys())}"
+
+
+def test_apply_mcp_config_writes_file(tmp_path, monkeypatch):
+    """apply_config writes a valid MCP entry for each non-OpenClaw agent."""
+    from codenexus.wizard import AgentWizard, AgentType, AGENTS
+
+    monkeypatch.setattr(AgentWizard, "_auto_index", lambda self, p: None)
+
+    targets = {
+        AgentType.CLAUDE_CODE: tmp_path / ".claude.json",
+        AgentType.CURSOR: tmp_path / ".cursor" / "mcp.json",
+        AgentType.WINDSURF: tmp_path / ".windsurf" / "mcp.json",
+        AgentType.COPILOT: tmp_path / ".copilot" / "mcp-config.json",
+        AgentType.CODEX: tmp_path / ".codex" / "config.toml",
+        AgentType.ZED: tmp_path / ".zed" / "settings.json",
+        AgentType.CONTINUE: tmp_path / ".continue" / "config.json",
+        AgentType.AUGMENT: tmp_path / ".augment" / "settings.json",
+        AgentType.HERMES: tmp_path / ".hermes" / "config.yaml",
+    }
+    for p in targets.values():
+        p.parent.mkdir(parents=True, exist_ok=True)
+        if p.suffix == ".toml":
+            p.write_text("")
+        elif p.suffix == ".yaml":
+            p.write_text("")
+        else:
+            p.write_text("{}")
+
+    w = AgentWizard()
+    proj = tmp_path / "project"
+    proj.mkdir()
+    for at, p in targets.items():
+        AGENTS[at].config_file = str(p)
+        assert w.apply_config(at, proj) is True
+        assert "codenexus" in p.read_text()
+
+
+def test_apply_mcp_config_skips_unsupported_format(tmp_path, monkeypatch):
+    """apply_config must NOT overwrite unsupported (e.g. .md) config files."""
+    from codenexus.wizard import AgentWizard, AgentType, AGENTS
+
+    monkeypatch.setattr(AgentWizard, "_auto_index", lambda self, p: None)
+
+    md = tmp_path / "copilot-instructions.md"
+    md.parent.mkdir(parents=True, exist_ok=True)
+    md.write_text("# Copilot instructions\nIMPORTANT CONTENT\n")
+    AGENTS[AgentType.COPILOT].config_file = str(md)
+
+    w = AgentWizard()
+    result = w.apply_config(AgentType.COPILOT, tmp_path / "project")
+    assert result is False
+    assert "IMPORTANT CONTENT" in md.read_text()  # file untouched

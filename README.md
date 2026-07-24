@@ -234,6 +234,25 @@ claude
 
 ---
 
+## Supported AI Agents
+
+CodeNexus integrates with AI coding agents via MCP (or skills for OpenClaw). The
+setup wizard auto-detects installed agents and writes the correct config format
+for each.
+
+| Agent | Config file | MCP key |
+|-------|-------------|---------|
+| Claude Code | `~/.claude.json` | `mcpServers` |
+| Cursor | `~/.cursor/mcp.json` | `mcpServers` |
+| Windsurf | `~/.windsurf/mcp.json` | `mcpServers` |
+| GitHub Copilot | `~/.copilot/mcp-config.json` | `mcpServers` |
+| Zed | `~/.zed/settings.json` | `mcpServers` |
+| Continue.dev | `~/.continue/config.json` | `mcpServers` |
+| Augment | `~/.augment/settings.json` | `mcpServers` |
+| Hermes Agent | `~/.hermes/config.yaml` | `mcp_servers` |
+| Codex | `~/.codex/config.toml` | `mcp_servers` |
+| OpenClaw | `~/.openclaw/workspace/skills/codenexus/SKILL.md` | skill |
+
 ## Other AI Agent Integration
 
 CodeNexus works with various AI coding agents. Here's how to integrate with other popular tools.
@@ -401,6 +420,18 @@ codenexus wizard clear
 ```
 
 This will show all index directories and let you select which ones to clear.
+
+For non-interactive use (e.g. scripts/CI), clear everything without prompts:
+
+```bash
+codenexus wizard clear --all --yes
+```
+
+- `--all` selects every discovered index
+- `--yes` skips the confirmation prompt
+
+You can also clear specific indexes by typing their IDs (e.g. `idx-1,idx-3`)
+or type the project directory name to confirm each deletion individually.
 
 ### Interactive Setup
 

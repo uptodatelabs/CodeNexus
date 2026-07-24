@@ -74,7 +74,7 @@ AGENTS = {
     AgentType.COPILOT: AgentInfo(
         name="GitHub Copilot",
         agent_type=AgentType.COPILOT,
-        config_file="~/.github/copilot-instructions.md",
+        config_file="~/.copilot/mcp-config.json",
         mcp_support=True,
         cli_command="copilot",
         description="GitHub AI pair programmer - MCP via copilot-mcp-server",
@@ -543,6 +543,17 @@ Use CodeNexus to search and analyze code in the workspace.
     def _apply_mcp_config(self, info, config):
         """Apply MCP configuration for an agent."""
         config_path = Path(info.config_file).expanduser()
+
+        # Guard against unsupported config file formats (e.g. .md) so we
+        # never overwrite an unrelated file with JSON/MCP content.
+        supported = {".json", ".yaml", ".yml", ".toml"}
+        if config_path.suffix not in supported:
+            print(
+                f"[WARNING] {config_path} has an unsupported format "
+                f"({config_path.suffix or 'none'}). Skipping automatic write. "
+                f"Configure {info.name} manually with: {info.cli_command}"
+            )
+            return False
 
         # Create parent directory
         config_path.parent.mkdir(parents=True, exist_ok=True)
