@@ -5,6 +5,17 @@ All notable changes to CodeNexus will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.4] - 2026-07-24
+
+### Added
+- Dynamic OpenClaw path detection with environment variable support
+- OPENCLAW_HOME and OPENCLAW_CONFIG environment variables
+- Multiple fallback paths for OpenClaw detection
+
+### Fixed
+- Agent detection now properly stops at home directory
+- Interactive wizard now applies configuration automatically
+
 ## [1.1.3] - 2026-07-24
 
 ### Fixed
