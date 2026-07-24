@@ -72,9 +72,9 @@ AGENTS = {
         name="GitHub Copilot",
         agent_type=AgentType.COPILOT,
         config_file="~/.github/copilot-instructions.md",
-        mcp_support=False,
-        cli_command="",
-        description="GitHub AI pair programmer"
+        mcp_support=True,
+        cli_command="copilot",
+        description="GitHub AI pair programmer - MCP via copilot-mcp-server"
     ),
     AgentType.CODEX: AgentInfo(
         name="Codex",
@@ -103,10 +103,10 @@ AGENTS = {
     AgentType.AUGMENT: AgentInfo(
         name="Augment",
         agent_type=AgentType.AUGMENT,
-        config_file="~/.augment/config.json",
-        mcp_support=False,
-        cli_command="augment setup",
-        description="AI-powered development platform"
+        config_file="~/.augment/settings.json",
+        mcp_support=True,
+        cli_command="auggie",
+        description="AI-native coding platform by Augment Code"
     ),
 }
 
@@ -138,7 +138,6 @@ class AgentWizard:
         if agent_type in [AgentType.CLAUDE_CODE]:
             return {"mcpServers": base_config}
         elif agent_type == AgentType.OPENCLAW:
-            # OpenClaw uses skill system, generate SKILL.md content
             return {"skill": {
                 "name": "codenexus",
                 "description": "Search and analyze code using CodeNexus",
@@ -155,6 +154,12 @@ class AgentWizard:
             return {"mcpServers": base_config}
         elif agent_type == AgentType.CODEX:
             return {"mcp_servers": base_config}
+        elif agent_type == AgentType.COPILOT:
+            return {"mcpServers": base_config}
+        elif agent_type == AgentType.AUGMENT:
+            return {"mcpServers": base_config}
+        elif agent_type in [AgentType.ZED, AgentType.CONTINUE]:
+            return {"mcpServers": base_config}
         return {}
 
     def generate_cli_command(self, agent_type, project_path):
