@@ -254,11 +254,15 @@ def serve(ctx):
     """Start MCP server for AI agent integration."""
     workspace = ctx.obj["workspace"]
     
-    # Index if needed
-    if not (workspace / ".codenexus" / "index.db").exists():
+    # Auto-index if not exists
+    db_path = workspace / ".codenexus" / "index.db"
+    if not db_path.exists():
+        import sys
+        print(f"Indexing workspace: {workspace}", file=sys.stderr)
         from .server import CodeNexusServer
         server = CodeNexusServer(workspace)
-        server.index_workspace()
+        count = server.index_workspace()
+        print(f"Indexed {count} files", file=sys.stderr)
     
     # Run MCP server via stdio
     from .mcp_server import CodeNexusMCPServer
