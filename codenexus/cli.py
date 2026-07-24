@@ -832,5 +832,60 @@ def upgrade():
     console.print("Purchase at: https://codenexus.dev/pricing")
 
 
+
+
+@main.group()
+def wizard():
+    """AI agent setup wizard."""
+    pass
+
+@wizard.command()
+def detect():
+    """Detect installed AI coding agents."""
+    from .wizard import AgentWizard
+    
+    wiz = AgentWizard()
+    wiz.print_detected_agents()
+
+@wizard.command()
+def list():
+    """List all supported AI agents."""
+    from .wizard import AGENTS
+    
+    table = Table(title="Supported AI Agents")
+    table.add_column("Name", style="cyan")
+    table.add_column("MCP", style="green")
+    table.add_column("Description")
+    
+    for agent_type, info in AGENTS.items():
+        mcp = "Yes" if info.mcp_support else "No"
+        table.add_row(info.name, mcp, info.description)
+    
+    console.print(table)
+
+@wizard.command()
+@click.argument("agent_name")
+@click.option("--project", "-p", default=".", help="Project path")
+def setup(agent_name, project):
+    """Setup a specific AI agent."""
+    from .wizard import AgentWizard, get_agent_by_name
+    
+    agent_type = get_agent_by_name(agent_name)
+    if not agent_type:
+        console.print(f"[red]Unknown agent: {agent_name}[/]")
+        console.print("[dim]Use 'codenexus wizard list' to see supported agents[/]")
+        return
+    
+    wiz = AgentWizard()
+    wiz.print_setup_guide(agent_type, Path(project).resolve())
+
+@wizard.command()
+def interactive():
+    """Run interactive setup wizard."""
+    from .wizard import AgentWizard
+    
+    wiz = AgentWizard()
+    wiz.interactive_setup()
+
 if __name__ == "__main__":
     main()
