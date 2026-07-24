@@ -34,10 +34,10 @@ AGENTS = {
     AgentType.CLAUDE_CODE: AgentInfo(
         name="Claude Code",
         agent_type=AgentType.CLAUDE_CODE,
-        config_file="~/.claude.json",
+        config_file=".mcp.json",
         mcp_support=True,
         cli_command="claude mcp add",
-        description="Anthropic Claude Code - Best for complex coding tasks",
+        description="Anthropic Claude Code - Best for complex coding tasks"
     ),
     AgentType.OPENCLAW: AgentInfo(
         name="OpenClaw",
