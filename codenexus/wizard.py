@@ -456,34 +456,33 @@ class AgentWizard:
             result = self._apply_mcp_config(info, config)
         else:
             result = False
-        
+
         # Auto-index after successful config
         if result:
             self._auto_index(project_path)
-        
+
         return result
-    
+
     def _auto_index(self, project_path):
         """Automatically index the project after config."""
         import subprocess
-        import sys
-        
+
         print(f"\n[INFO] Indexing project: {project_path}")
         try:
             result = subprocess.run(
                 ["codenexus", "-w", str(project_path), "index"],
                 capture_output=True,
                 text=True,
-                timeout=120
+                timeout=120,
             )
             if result.returncode == 0:
-                print(f"[SUCCESS] Project indexed successfully")
+                print("[SUCCESS] Project indexed successfully")
             else:
-                print(f"[WARNING] Indexing completed with warnings")
+                print("[WARNING] Indexing completed with warnings")
         except subprocess.TimeoutExpired:
-            print(f"[WARNING] Indexing timed out")
+            print("[WARNING] Indexing timed out")
         except FileNotFoundError:
-            print(f"[WARNING] codenexus not found in PATH")
+            print("[WARNING] codenexus not found in PATH")
 
     def _apply_openclaw_config(self, config, project_path):
         """Apply OpenClaw skill configuration."""
