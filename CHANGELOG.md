@@ -5,6 +5,11 @@ All notable changes to CodeNexus will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.21] - 2026-07-24
+
+### Fixed
+- **Critical crash in `wizard clear` (TypeError: object of type 'int' has no len()).** The `wizard list` command was defined as `def list():`, which shadowed the builtin `list` at module scope. `clear` then called the click `list` Command instead of the builtin, triggering infinite recursion and the crash. Renamed the command function to `list_cmd` (kept the `list` subcommand name). Also added `--all`/`--yes` non-interactive flags.
+
 ## [1.1.20] - 2026-07-24
 
 ### Fixed

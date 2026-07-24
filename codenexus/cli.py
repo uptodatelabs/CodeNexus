@@ -23,7 +23,7 @@ console = Console()
 
 @click.group()
 @click.option("--workspace", "-w", default=".", help="Workspace path")
-@click.version_option(version="1.1.20", prog_name="codenexus")
+@click.version_option(version="1.1.21", prog_name="codenexus")
 @click.pass_context
 def main(ctx, workspace):
     """CodeNexus: The context engine for AI coding agents.
@@ -819,8 +819,8 @@ def detect():
     wiz.print_detected_agents()
 
 
-@wizard.command()
-def list():
+@wizard.command("list")
+def list_cmd():
     """List all supported AI agents."""
     from .wizard import AGENTS
 
@@ -873,8 +873,9 @@ def interactive():
 
 
 @wizard.command()
-@click.option("--dry-run", is_flag=True, help="Show what would be deleted without removing anything")
-def clear(dry_run):
+@click.option("--all", "clear_all", is_flag=True, help="Clear all discovered indexes (non-interactive)")
+@click.option("--yes", is_flag=True, help="Skip the confirmation prompt (use with --all)")
+def clear(clear_all, yes):
     """Clear index data with interactive selection.
 
     Parses each detected AI agent's config (Claude Code, Hermes, Cursor,
@@ -970,27 +971,55 @@ def clear(dry_run):
         )
     console.print(table)
 
-    # Ask for selection
-    console.print("\n[bold]Options:[/]")
-    console.print("  - Enter IDs separated by comma (e.g., idx-1,idx-3)")
-    console.print("  - Enter 'all' to clear all")
-    console.print("  - Enter 'q' to cancel")
+    # Read all of stdin up front so click does not try to interpret leftover
+    # piped input as additional command-line arguments (which caused a
+    # "TypeError: object of type 'int' has no len()" crash on `all`).
+    import sys
 
-    selection = input("\nSelect indexes to clear: ").strip()
+    _stdin_lines = []
+    try:
+        if not sys.stdin.isatty():
+            _stdin_lines = [ln.strip() for ln in sys.stdin.read().splitlines()]
+    except Exception:
+        _stdin_lines = []
+    _stdin_iter = iter(_stdin_lines)
 
-    if selection.lower() == "q":
-        console.print("[yellow]Cancelled.[/]")
-        return
+    def _read_line(prompt_text: str) -> str:
+        console.print(prompt_text, end="")
+        try:
+            return next(_stdin_iter)
+        except StopIteration:
+            # Fall back to interactive input (tty) or empty (eof)
+            try:
+                return input()
+            except Exception:
+                return ""
 
-    if selection.lower() == "all":
+    # Non-interactive fast path: --all selects everything, --yes skips confirm
+    if clear_all:
         selected_indices = list(range(len(index_entries)))
     else:
-        id_to_index = {e["id"]: i for i, e in enumerate(index_entries)}
-        try:
-            selected_indices = [id_to_index[s.strip()] for s in selection.split(",") if s.strip()]
-        except (KeyError, ValueError):
-            console.print("[red]Invalid input.[/]")
+        # Ask for selection
+        console.print("\n[bold]Options:[/]")
+        console.print("  - Enter IDs separated by comma (e.g., idx-1,idx-3)")
+        console.print("  - Enter 'all' to clear all")
+        console.print("  - Enter 'q' to cancel")
+
+        selection = _read_line("\nSelect indexes to clear: ").strip()
+
+        if selection.lower() == "q":
+            console.print("[yellow]Cancelled.[/]")
             return
+
+        if selection.lower() == "all":
+            selected_indices = list(range(len(index_entries)))
+        else:
+            id_to_index = {e["id"]: i for i, e in enumerate(index_entries)}
+            try:
+                selected_indices = [id_to_index[s.strip()] for s in selection.split(",") if s.strip()]
+            except (KeyError, ValueError):
+                console.print("[red]Invalid input.[/]")
+                return
 
     # Validate indices
     valid_indices = [i for i in selected_indices if 0 <= i < len(index_entries)]
@@ -1009,26 +1038,25 @@ def clear(dry_run):
             f"  - [red]{e['project']}[/]  (confirm by typing: [yellow]{e['confirm_token']}[/])"
         )
 
-    if dry_run:
-        console.print("\n[yellow]--dry-run: no files were removed.[/]")
-        return
-
-    console.print(
-        "\nTo confirm, type the project directory name for EACH selected index,"
-        "\nor 'all' to confirm every selection. Anything else cancels."
-    )
-
-    typed = input("Type to confirm: ").strip()
-    if typed.lower() == "all":
+    if yes:
         confirmed = set(valid_indices)
     else:
-        confirmed = set()
-        for i in valid_indices:
-            if typed == index_entries[i]["confirm_token"]:
-                confirmed.add(i)
-        if not confirmed:
-            console.print("[yellow]Cancelled. No indexes were removed.[/]")
-            return
+        console.print(
+            "\nTo confirm, type the project directory name for EACH selected index,"
+            "\nor 'all' to confirm every selection. Anything else cancels."
+        )
+
+        typed = _read_line("Type to confirm: ").strip()
+        if typed.lower() == "all":
+            confirmed = set(valid_indices)
+        else:
+            confirmed = set()
+            for i in valid_indices:
+                if typed == index_entries[i]["confirm_token"]:
+                    confirmed.add(i)
+            if not confirmed:
+                console.print("[yellow]Cancelled. No indexes were removed.[/]")
+                return
 
     # Clear selected directories
     cleared = 0
