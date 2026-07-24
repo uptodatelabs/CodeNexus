@@ -335,6 +335,54 @@ codenexus search "query" --json
 
 ---
 
+## 설정 마법사
+
+CodeNexus는 AI 코딩 에이전트를 쉽게 설정할 수 있는 마법사를 포함하고 있습니다.
+
+### 설치된 에이전트 감지
+
+```bash
+codenexus wizard detect
+```
+
+### 지원되는 에이전트 목록
+
+```bash
+codenexus wizard list
+```
+
+### 특정 에이전트 설정
+
+```bash
+# Claude Code
+codenexus wizard setup claude_code
+
+# OpenClaw
+codenexus wizard setup openclaw
+
+# Hermes Agent
+codenexus wizard setup hermes
+
+# Cursor
+codenexus wizard setup cursor
+
+# GitHub Copilot
+codenexus wizard setup copilot
+
+# Codex
+codenexus wizard setup codex
+
+# 그 외...
+```
+
+### 대화형 설정
+
+```bash
+codenexus wizard interactive
+```
+
+---
+
 ## 토큰 절감 예시
 
 **CodeNexus 사용 전:**

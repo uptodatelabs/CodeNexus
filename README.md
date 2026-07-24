@@ -341,6 +341,54 @@ codenexus search "query" --json
 
 ---
 
+## Setup Wizard
+
+CodeNexus includes a setup wizard to easily configure AI coding agents.
+
+### Detect Installed Agents
+
+```bash
+codenexus wizard detect
+```
+
+### List Supported Agents
+
+```bash
+codenexus wizard list
+```
+
+### Setup a Specific Agent
+
+```bash
+# Claude Code
+codenexus wizard setup claude_code
+
+# OpenClaw
+codenexus wizard setup openclaw
+
+# Hermes Agent
+codenexus wizard setup hermes
+
+# Cursor
+codenexus wizard setup cursor
+
+# GitHub Copilot
+codenexus wizard setup copilot
+
+# Codex
+codenexus wizard setup codex
+
+# And more...
+```
+
+### Interactive Setup
+
+```bash
+codenexus wizard interactive
+```
+
+---
+
 ## Roadmap
 
 - [ ] Tree-sitter integration for better parsing

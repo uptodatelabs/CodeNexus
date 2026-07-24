@@ -5,6 +5,29 @@ All notable changes to CodeNexus will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-07-24
+
+### Added
+- Agent Setup Wizard with interactive configuration
+- Support for 10 AI coding agents:
+  - Claude Code (MCP)
+  - OpenClaw (Skill system)
+  - Hermes Agent (MCP)
+  - Cursor (MCP)
+  - Windsurf (MCP)
+  - GitHub Copilot (MCP via copilot-mcp-server)
+  - Codex (MCP)
+  - Zed (MCP)
+  - Continue.dev (MCP)
+  - Augment (MCP via Auggie CLI)
+- Auto-detect installed agents
+- Setup guides for each agent
+
+### Fixed
+- Resolved all ruff lint errors
+- Fixed whitespace issues
+- Removed unused variables
+
 ## [1.0.3] - 2026-07-22
 
 ### Fixed
