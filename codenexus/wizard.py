@@ -118,10 +118,12 @@ class AgentWizard:
         installed = []
         for agent_type, info in AGENTS.items():
             config_path = Path(info.config_file).expanduser()
-            # Check if config file exists OR any parent directory exists
+            # Check if config file exists OR immediate parent directories exist
+            # Stop at home directory to avoid false positives
+            home = Path.home()
             check_path = config_path
             found = False
-            while check_path != check_path.parent:
+            while check_path != home and check_path != check_path.parent:
                 if check_path.exists():
                     found = True
                     break
