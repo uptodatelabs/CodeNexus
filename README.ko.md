@@ -113,7 +113,7 @@ pip install codenexus-ai
   "mcpServers": {
     "codenexus": {
       "command": "codenexus",
-      "args": ["serve", "-w", "여기에_프로젝트_경로"]
+      "args": ["-w", "여기에_프로젝트_경로", "serve"]
     }
   }
 }
@@ -125,7 +125,7 @@ pip install codenexus-ai
 
 **❌ 잘못된 예시:**
 ```json
-"args": ["serve", "-w", "C:\\Users\\username\\.codenexus"]
+"args": ["-w", "C:\\Users\\username\\.codenexus", "serve"]
 ```
 → CodeNexus 설정 디렉토리 (오류)
 
@@ -143,7 +143,7 @@ pip install codenexus-ai
   "mcpServers": {
     "codenexus": {
       "command": "codenexus",
-      "args": ["serve", "-w", "C:\\Users\\username\\projects\\my-app"]
+      "args": ["-w", "C:\\Users\\username\\projects\\my-app", "serve"]
     }
   }
 }
@@ -155,7 +155,7 @@ pip install codenexus-ai
   "mcpServers": {
     "codenexus": {
       "command": "codenexus",
-      "args": ["serve", "-w", "/home/username/projects/my-app"]
+      "args": ["-w", "/home/username/projects/my-app", "serve"]
     }
   }
 }
@@ -172,7 +172,7 @@ pip install codenexus-ai
       "mcpServers": {
         "codenexus": {
           "command": "codenexus",
-          "args": ["serve", "-w", "C:\\Users\\username\\projects\\app1"]
+          "args": ["-w", "C:\\Users\\username\\projects\\app1", "serve"]
         }
       }
     },
@@ -180,7 +180,7 @@ pip install codenexus-ai
       "mcpServers": {
         "codenexus": {
           "command": "codenexus",
-          "args": ["serve", "-w", "C:\\Users\\username\\projects\\app2"]
+          "args": ["-w", "C:\\Users\\username\\projects\\app2", "serve"]
         }
       }
     }
@@ -296,7 +296,7 @@ pip install codenexus-ai
 **2. MCP 서버 추가:**
 
 ```bash
-hermes mcp add codenexus -- codenexus serve -w /path/to/your/project
+hermes mcp add codenexus -- codenexus -w /path/to/your/project serve
 ```
 
 또는 `~/.hermes/config.yaml`에 추가:

@@ -259,7 +259,9 @@ class CodeNexusMCPServer:
 
         graph = DependencyGraph(self.db_path)
         rows = graph.conn.execute(
-            "SELECT * FROM nodes WHERE file_path = ?", (file_path,)
+            "SELECT id, file_path, name, node_type, start_line, end_line, "
+            "content, signature, centrality_score FROM nodes WHERE file_path = ?",
+            (file_path,),
         ).fetchall()
 
         if not rows:
@@ -267,7 +269,7 @@ class CodeNexusMCPServer:
 
         skeletons = []
         for row in rows:
-            node = Node(*row[:9])
+            node = Node.from_row(row)
             skeletons.append(f"{node.node_type} {node.name}: {node.signature}")
 
         return {"skeletons": skeletons}

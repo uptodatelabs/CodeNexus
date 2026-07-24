@@ -149,6 +149,9 @@ class CodeParser:
         nodes = []
         edges = []
 
+        # Track the enclosing definition so calls can be attributed to a caller
+        current_def_stack: list[str] = []
+
         def walk_node(node, depth=0):
             # Extract functions
             if node.type in (
@@ -156,10 +159,11 @@ class CodeParser:
                 "function_declaration",
                 "arrow_function",
                 "function",
+                "method_definition",
             ):
                 name = self._get_node_name(node, source)
                 if name:
-                    node_id = f"{file_path}::{name}"
+                    node_id = name
                     sig = self._extract_signature_tree_sitter(node, source)
                     content = source[node.start_byte : node.end_byte]
 
@@ -175,12 +179,21 @@ class CodeParser:
                             signature=sig,
                         )
                     )
+                    current_def_stack.append(node_id)
+                    for child in node.children:
+                        walk_node(child, depth + 1)
+                    current_def_stack.pop()
+                    return
 
             # Extract classes
-            elif node.type in ("class_definition", "class_declaration", "class"):
+            elif node.type in (
+                "class_definition",
+                "class_declaration",
+                "class",
+            ):
                 name = self._get_node_name(node, source)
                 if name:
-                    node_id = f"{file_path}::{name}"
+                    node_id = name
                     sig = self._extract_signature_tree_sitter(node, source)
                     content = source[node.start_byte : node.end_byte]
 
@@ -196,15 +209,51 @@ class CodeParser:
                             signature=sig,
                         )
                     )
+                    current_def_stack.append(node_id)
+                    for child in node.children:
+                        walk_node(child, depth + 1)
+                    current_def_stack.pop()
+                    return
 
             # Extract imports
-            elif node.type in ("import_statement", "import_from_statement", "import_declaration"):
+            elif node.type in (
+                "import_statement",
+                "import_from_statement",
+                "import_declaration",
+            ):
                 imp = source[node.start_byte : node.end_byte]
                 edges.append(
                     Edge(
-                        source_id=f"{file_path}::import", target_id=imp.strip(), edge_type="imports"
+                        source_id=f"{file_path}::import",
+                        target_id=imp.strip(),
+                        edge_type="imports",
                     )
                 )
+                for child in node.children:
+                    walk_node(child, depth + 1)
+                return
+
+            # Extract function/method calls -> call edges
+            elif node.type in (
+                "call",
+                "call_expression",
+                "function_call",
+                "method_invocation",
+                "invocation_expression",
+            ):
+                callee = self._get_callee_name(node, source)
+                if callee and current_def_stack:
+                    caller_id = current_def_stack[-1]
+                    edges.append(
+                        Edge(
+                            source_id=caller_id,
+                            target_id=callee,
+                            edge_type="calls",
+                        )
+                    )
+                for child in node.children:
+                    walk_node(child, depth + 1)
+                return
 
             # Recurse
             for child in node.children:
@@ -212,6 +261,51 @@ class CodeParser:
 
         walk_node(tree.root_node)
         return nodes, edges
+
+    def _get_callee_name(self, node, source: str) -> str | None:
+        """Extract the callee name from a call/invocation node."""
+        # Common shapes:
+        #   call_expression: function(...)  -> child[0] is identifier/field_expression
+        #   method_invocation: obj.method(...) -> field_expression name
+        #   function_call: name(...) (Go/Java/Rust-ish)
+        target = None
+        for child in node.children:
+            if child.type in (
+                "identifier",
+                "field_expression",
+                "selector_expression",
+                "member_expression",
+                "scoped_identifier",
+                "qualified_identifier",
+            ):
+                target = child
+                break
+        if target is None:
+            return None
+
+        if target.type in ("identifier",):
+            return source[target.start_byte : target.end_byte]
+
+        if target.type in (
+            "field_expression",
+            "member_expression",
+            "selector_expression",
+        ):
+            # Take the last identifier segment (e.g. obj.method -> method)
+            last = None
+            for c in target.children:
+                if c.type == "identifier":
+                    last = c
+            if last is not None:
+                return source[last.start_byte : last.end_byte]
+            return source[target.start_byte : target.end_byte]
+
+        if target.type in ("scoped_identifier", "qualified_identifier"):
+            # module::func or a.b.c -> take the last segment
+            text = source[target.start_byte : target.end_byte]
+            return text.split("::")[-1].split(".")[-1]
+
+        return None
 
     def _get_node_name(self, node, source: str) -> str | None:
         """Extract name from AST node."""
@@ -254,7 +348,12 @@ class CodeParser:
     def _parse_with_regex(
         self, source: str, file_path: str, language: str
     ) -> tuple[list[Node], list[Edge]]:
-        """Fallback regex-based parsing."""
+        """Fallback regex-based parsing.
+
+        Extracts function/class definitions plus in-file call edges so that
+        the dependency graph and PageRank centrality are meaningful even
+        without tree-sitter.
+        """
         nodes = []
         edges = []
 
@@ -263,6 +362,12 @@ class CodeParser:
             return [], []
 
         lines = source.split("\n")
+
+        # First pass: find definitions and their block ranges
+        defs: list[dict] = []  # {name, node_type, start, end, id}
+        calls: list[tuple[int, str]] = []  # (line_index, raw_call_text)
+
+        call_re = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(")
 
         for i, line in enumerate(lines):
             stripped = line.strip()
@@ -274,8 +379,18 @@ class CodeParser:
                 if not name and match.lastindex >= 2:
                     name = match.group(2)
                 if name:
-                    node_id = f"{file_path}::{name}"
+                    node_id = name
                     sig = self._extract_function_signature_regex(lines, i)
+                    end = self._find_block_end(lines, i)
+                    defs.append(
+                        {
+                            "name": name,
+                            "node_type": "function",
+                            "start": i,
+                            "end": end,
+                            "id": node_id,
+                        }
+                    )
                     nodes.append(
                         Node(
                             id=node_id,
@@ -283,7 +398,7 @@ class CodeParser:
                             name=name,
                             node_type="function",
                             start_line=i,
-                            end_line=self._find_block_end(lines, i),
+                            end_line=end,
                             content=self._extract_block(lines, i),
                             signature=sig,
                         )
@@ -294,8 +409,18 @@ class CodeParser:
             if match:
                 name = match.group(1)
                 if name:
-                    node_id = f"{file_path}::{name}"
+                    node_id = name
                     sig = self._extract_class_signature_regex(lines, i)
+                    end = self._find_block_end(lines, i)
+                    defs.append(
+                        {
+                            "name": name,
+                            "node_type": "class",
+                            "start": i,
+                            "end": end,
+                            "id": node_id,
+                        }
+                    )
                     nodes.append(
                         Node(
                             id=node_id,
@@ -303,7 +428,7 @@ class CodeParser:
                             name=name,
                             node_type="class",
                             start_line=i,
-                            end_line=self._find_block_end(lines, i),
+                            end_line=end,
                             content=self._extract_block(lines, i),
                             signature=sig,
                         )
@@ -315,9 +440,57 @@ class CodeParser:
                 if match:
                     imp = match.group(1)
                     edges.append(
-                        Edge(source_id=f"{file_path}::import", target_id=imp, edge_type="imports")
+                        Edge(
+                            source_id=f"{file_path}::import",
+                            target_id=imp,
+                            edge_type="imports",
+                        )
                     )
                     break
+
+            # Collect call sites (any line that invokes something)
+            for m in call_re.finditer(stripped):
+                calls.append((i, m.group(1)))
+
+        # Second pass: attribute calls to their enclosing definition
+        def_name_set = {d["name"] for d in defs}
+        for line_idx, callee in calls:
+            # Find the innermost definition that contains this line
+            enclosing = None
+            for d in defs:
+                if d["start"] <= line_idx <= d["end"]:
+                    # Prefer the deepest (smallest range) enclosing def
+                    if enclosing is None or (d["end"] - d["start"]) < (
+                        enclosing["end"] - enclosing["start"]
+                    ):
+                        enclosing = d
+            if enclosing is None or callee == enclosing["name"]:
+                continue
+            target_id = callee
+            # Emit the call edge. If the callee is not defined in this file,
+            # also register it as an external symbol node so the graph stays
+            # connected across files (needed for meaningful PageRank).
+            if callee not in def_name_set:
+                nodes.append(
+                    Node(
+                        id=callee,
+                        file_path="<external>",
+                        name=callee,
+                        node_type="external",
+                        start_line=0,
+                        end_line=0,
+                        content="",
+                        signature=callee,
+                    )
+                )
+                def_name_set.add(callee)
+            edges.append(
+                Edge(
+                    source_id=enclosing["id"],
+                    target_id=target_id,
+                    edge_type="calls",
+                )
+            )
 
         return nodes, edges
 

@@ -23,6 +23,28 @@ class Node:
         if self.dependencies is None:
             self.dependencies = []
 
+    @classmethod
+    def from_row(cls, row) -> "Node":
+        """Build a Node from a DB row.
+
+        Accepts rows selected in canonical node order. The `nodes` table has
+        columns: id, file_path, name, node_type, start_line, end_line,
+        content, signature, centrality_score, created_at. `dependencies` is
+        not stored in the DB, so it defaults to None (-> [] via __post_init__).
+        """
+        return cls(
+            id=row[0],
+            file_path=row[1],
+            name=row[2],
+            node_type=row[3],
+            start_line=row[4],
+            end_line=row[5],
+            content=row[6],
+            signature=row[7],
+            dependencies=None,
+            centrality_score=row[8] if len(row) > 8 else 0.0,
+        )
+
 
 @dataclass
 class Edge:
@@ -140,53 +162,65 @@ class DependencyGraph:
         self.conn.commit()
 
     def get_node(self, node_id: str) -> Node | None:
-        row = self.conn.execute("SELECT * FROM nodes WHERE id = ?", (node_id,)).fetchone()
+        row = self.conn.execute(
+            "SELECT id, file_path, name, node_type, start_line, end_line, "
+            "content, signature, centrality_score FROM nodes WHERE id = ?",
+            (node_id,),
+        ).fetchone()
         if row:
-            return Node(*row[:9])  # centrality_score 포함
+            return Node.from_row(row)
         return None
 
     def get_dependents(self, node_id: str) -> list[Node]:
         rows = self.conn.execute(
             """
-            SELECT n.* FROM nodes n
+            SELECT n.id, n.file_path, n.name, n.node_type, n.start_line,
+                   n.end_line, n.content, n.signature, n.centrality_score
+            FROM nodes n
             JOIN edges e ON n.id = e.source_id
             WHERE e.target_id = ?
         """,
             (node_id,),
         ).fetchall()
-        return [Node(*row[:9]) for row in rows]
+        return [Node.from_row(row) for row in rows]
 
     def get_dependencies(self, node_id: str) -> list[Node]:
         rows = self.conn.execute(
             """
-            SELECT n.* FROM nodes n
+            SELECT n.id, n.file_path, n.name, n.node_type, n.start_line,
+                   n.end_line, n.content, n.signature, n.centrality_score
+            FROM nodes n
             JOIN edges e ON n.id = e.target_id
             WHERE e.source_id = ?
         """,
             (node_id,),
         ).fetchall()
-        return [Node(*row[:9]) for row in rows]
+        return [Node.from_row(row) for row in rows]
 
     def search_nodes(self, query: str, limit: int = 10, use_centrality: bool = True) -> list[Node]:
         """Search nodes with optional centrality ranking."""
+        cols = (
+            "nodes.id, nodes.file_path, nodes.name, nodes.node_type, nodes.start_line, "
+            "nodes.end_line, nodes.content, nodes.signature, nodes.centrality_score"
+        )
         # Try FTS5 search first
         try:
             if use_centrality:
                 rows = self.conn.execute(
-                    """
-                    SELECT n.* FROM nodes n
-                    JOIN nodes_fts fts ON n.rowid = fts.rowid
+                    f"""
+                    SELECT {cols} FROM nodes
+                    JOIN nodes_fts ON nodes.rowid = nodes_fts.rowid
                     WHERE nodes_fts MATCH ?
-                    ORDER BY n.centrality_score DESC
+                    ORDER BY nodes.centrality_score DESC
                     LIMIT ?
                 """,
                     (query, limit),
                 ).fetchall()
             else:
                 rows = self.conn.execute(
-                    """
-                    SELECT n.* FROM nodes n
-                    JOIN nodes_fts fts ON n.rowid = fts.rowid
+                    f"""
+                    SELECT {cols} FROM nodes
+                    JOIN nodes_fts ON nodes.rowid = nodes_fts.rowid
                     WHERE nodes_fts MATCH ?
                     LIMIT ?
                 """,
@@ -194,15 +228,15 @@ class DependencyGraph:
                 ).fetchall()
 
             if rows:
-                return [Node(*row[:9]) for row in rows]
+                return [Node.from_row(row) for row in rows]
         except Exception:
             pass
 
         # Fallback to LIKE search
         if use_centrality:
             rows = self.conn.execute(
-                """
-                SELECT * FROM nodes
+                f"""
+                SELECT {cols} FROM nodes
                 WHERE name LIKE ? OR content LIKE ? OR signature LIKE ?
                 ORDER BY centrality_score DESC
                 LIMIT ?
@@ -211,15 +245,15 @@ class DependencyGraph:
             ).fetchall()
         else:
             rows = self.conn.execute(
-                """
-                SELECT * FROM nodes
+                f"""
+                SELECT {cols} FROM nodes
                 WHERE name LIKE ? OR content LIKE ? OR signature LIKE ?
                 LIMIT ?
             """,
                 (f"%{query}%", f"%{query}%", f"%{query}%", limit),
             ).fetchall()
 
-        return [Node(*row[:9]) for row in rows]
+        return [Node.from_row(row) for row in rows]
 
     def get_skeleton(self, node_id: str) -> str:
         node = self.get_node(node_id)
@@ -241,6 +275,9 @@ class DependencyGraph:
         Returns:
             Dictionary mapping node_id to PageRank score
         """
+        # Make sure any pending writes are visible before reading the graph
+        self.conn.commit()
+
         # Get all nodes and edges
         nodes = self.conn.execute("SELECT id FROM nodes").fetchall()
         node_ids = [row[0] for row in nodes]
@@ -319,13 +356,15 @@ class DependencyGraph:
         """Get nodes with highest centrality scores."""
         rows = self.conn.execute(
             """
-            SELECT * FROM nodes
+            SELECT id, file_path, name, node_type, start_line, end_line,
+                   content, signature, centrality_score
+            FROM nodes
             ORDER BY centrality_score DESC
             LIMIT ?
         """,
             (limit,),
         ).fetchall()
-        return [Node(*row[:9]) for row in rows]
+        return [Node.from_row(row) for row in rows]
 
     def get_impact_graph(self, node_id: str, depth: int = 2) -> dict:
         """
@@ -355,7 +394,9 @@ class DependencyGraph:
             # edge: caller -> current_id (source -> target)
             dependents = self.conn.execute(
                 """
-                SELECT n.* FROM nodes n
+                SELECT n.id, n.file_path, n.name, n.node_type, n.start_line,
+                       n.end_line, n.content, n.signature, n.centrality_score
+                FROM nodes n
                 JOIN edges e ON n.id = e.source_id
                 WHERE e.target_id = ?
             """,
@@ -363,7 +404,7 @@ class DependencyGraph:
             ).fetchall()
 
             for row in dependents:
-                dep = Node(*row[:9])
+                dep = Node.from_row(row)
                 if current_depth == 0:
                     impact["direct"].append({"id": dep.id, "name": dep.name, "file": dep.file_path})
                 else:

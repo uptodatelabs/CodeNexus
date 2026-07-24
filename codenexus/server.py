@@ -225,7 +225,9 @@ class CodeNexusServer:
 
         # Find nodes in file
         rows = self.graph.conn.execute(
-            "SELECT * FROM nodes WHERE file_path = ?", (file_path,)
+            "SELECT id, file_path, name, node_type, start_line, end_line, "
+            "content, signature, centrality_score FROM nodes WHERE file_path = ?",
+            (file_path,),
         ).fetchall()
 
         if not rows:
@@ -233,7 +235,7 @@ class CodeNexusServer:
 
         skeletons = []
         for row in rows:
-            node = Node(*row[:9])
+            node = Node.from_row(row)
             skeletons.append(f"{node.node_type} {node.name}: {node.signature}")
 
         return [
@@ -336,25 +338,39 @@ class CodeNexusServer:
                 for file_path in files_to_index
             }
 
+            parse_results = []
             for future in as_completed(future_to_file):
                 file_path = future_to_file[future]
                 try:
                     nodes, edges = future.result()
-                    for node in nodes:
-                        self.graph.add_node(node)
-                    for edge in edges:
-                        self.graph.add_edge(edge)
+                    parse_results.append((file_path, nodes, edges))
                     indexed += 1
                 except Exception as e:
                     print(f"Error processing {file_path}: {e}")
+
+        # Write to the graph sequentially on the main thread to avoid
+        # cross-thread SQLite connection races that break PageRank scoring.
+        for file_path, nodes, edges in parse_results:
+            for node in nodes:
+                self.graph.add_node(node)
+            for edge in edges:
+                self.graph.add_edge(edge)
 
         # Save cache
         self._save_cache()
 
         # Compute PageRank after indexing
         if indexed > 0:
+            # Ensure all writes are committed before scoring
+            self.graph.conn.commit()
             print("Computing centrality scores...")
             self.graph.compute_pagerank()
+            # Flush WAL so other processes (e.g. `codenexus top`) see the scores
+            try:
+                self.graph.conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            except Exception:
+                pass
+            self.graph.conn.commit()
 
         return indexed
 

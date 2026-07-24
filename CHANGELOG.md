@@ -5,6 +5,15 @@ All notable changes to CodeNexus will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.7] - 2026-07-24
+
+### Fixed
+- **Impact/PageRank was always 0 (critical bug).** `DependencyGraph` built nodes from `SELECT *` rows with `Node(*row[:9])`, but the `nodes` table has `created_at` as the 10th column, so the `centrality_score` column was silently dropped from the `Node` object. Added `Node.from_row()` and replaced all `Node(*row)` call sites so centrality scores are now loaded correctly.
+- **Call-edge extraction added.** The parser now extracts caller→callee edges from function calls (tree-sitter call nodes and a regex fallback), so the dependency graph forms real call chains and PageRank reflects actual code structure. Cross-file calls resolve to shared global symbol nodes.
+- **Fixed SQLite cross-thread race in indexing.** Parallel parsing wrote to the shared SQLite connection from worker threads; DB writes are now buffered and applied sequentially on the main thread before `compute_pagerank()` runs.
+- **README `-w` flag position corrected.** Every MCP config example used `["serve", "-w", ...]` which produces the invalid command `codenexus serve -w ...`. Correct order is `["-w", "<path>", "serve"]` (matching `wizard`). Fixed in `README.md`, `README.ko.md`, and the `hermes mcp add` snippet.
+- **Version numbers unified.** `__init__.py` (1.0.0), `cli.py` (1.1.18), and `mcp_server.py` (1.1.18) now all match `pyproject.toml` (1.1.18).
+
 ## [1.1.6] - 2026-07-24
 
 ### Fixed

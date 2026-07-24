@@ -105,7 +105,7 @@ Add the following to your `~/.claude.json`:
   "mcpServers": {
     "codenexus": {
       "command": "codenexus",
-      "args": ["serve", "-w", "/path/to/your/project"]
+      "args": ["-w", "/path/to/your/project", "serve"]
     }
   }
 }
@@ -117,13 +117,13 @@ Add the following to your `~/.claude.json`:
 
 **❌ Wrong:**
 ```json
-"args": ["serve", "-w", "C:\\Users\\username\\.codenexus"]
+"args": ["-w", "C:\\Users\\username\\.codenexus", "serve"]
 ```
 → CodeNexus config directory (incorrect)
 
 **✅ Correct:**
 ```json
-"args": ["serve", "-w", "C:\\Users\\username\\projects\\my-app"]
+"args": ["-w", "C:\\Users\\username\\projects\\my-app", "serve"]
 ```
 → Project directory where you want to use CodeNexus
 
@@ -135,7 +135,7 @@ Add the following to your `~/.claude.json`:
   "mcpServers": {
     "codenexus": {
       "command": "codenexus",
-      "args": ["serve", "-w", "C:\\Users\\username\\projects\\my-app"]
+      "args": ["-w", "C:\\Users\\username\\projects\\my-app", "serve"]
     }
   }
 }
@@ -147,7 +147,7 @@ Add the following to your `~/.claude.json`:
   "mcpServers": {
     "codenexus": {
       "command": "codenexus",
-      "args": ["serve", "-w", "/home/username/projects/my-app"]
+      "args": ["-w", "/home/username/projects/my-app", "serve"]
     }
   }
 }
@@ -164,7 +164,7 @@ To use CodeNexus with multiple projects, add configuration for each project:
       "mcpServers": {
         "codenexus": {
           "command": "codenexus",
-          "args": ["serve", "-w", "C:\\Users\\username\\projects\\app1"]
+          "args": ["-w", "C:\\Users\\username\\projects\\app1", "serve"]
         }
       }
     },
@@ -172,7 +172,7 @@ To use CodeNexus with multiple projects, add configuration for each project:
       "mcpServers": {
         "codenexus": {
           "command": "codenexus",
-          "args": ["serve", "-w", "C:\\Users\\username\\projects\\app2"]
+          "args": ["-w", "C:\\Users\\username\\projects\\app2", "serve"]
         }
       }
     }
@@ -288,7 +288,7 @@ pip install codenexus-ai
 **2. Add MCP server to Hermes:**
 
 ```bash
-hermes mcp add codenexus -- codenexus serve -w /path/to/your/project
+hermes mcp add codenexus -- codenexus -w /path/to/your/project serve
 ```
 
 Or add to `~/.hermes/config.yaml`:
