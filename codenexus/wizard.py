@@ -126,6 +126,11 @@ class AgentWizard:
 
     def __init__(self):
         self.workspace = Path.cwd()
+    
+    def get_indexed_projects(self) -> Dict[str, List[Dict]]:
+        """Get all indexed projects from all detected agents."""
+        from .agent_parser import get_all_indexed_projects
+        return get_all_indexed_projects()
 
     def _find_openclaw_config(self) -> Path | None:
         """Find OpenClaw configuration file."""
