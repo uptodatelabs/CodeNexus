@@ -318,8 +318,9 @@ class AgentWizard:
         info = self.get_agent_info(agent_type)
         if not info or not info.mcp_support:
             return {}
+        # Note: -w must come BEFORE serve command
         base_config = {
-            "codenexus": {"command": "codenexus", "args": ["serve", "-w", str(project_path)]}
+            "codenexus": {"command": "codenexus", "args": ["-w", str(project_path), "serve"]}
         }
         if agent_type in [AgentType.CLAUDE_CODE]:
             return {"mcpServers": base_config}
@@ -354,7 +355,8 @@ class AgentWizard:
         info = self.get_agent_info(agent_type)
         if not info or not info.cli_command:
             return f"# {info.name} requires manual configuration"
-        return f"{info.cli_command} codenexus -- codenexus serve -w {project_path}"
+        # Note: -w must come BEFORE serve command
+        return f"{info.cli_command} codenexus -- codenexus -w {project_path} serve"
 
     def print_detected_agents(self):
         installed = self.detect_installed_agents()

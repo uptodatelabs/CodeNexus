@@ -253,18 +253,17 @@ def top(ctx, depth):
 def serve(ctx):
     """Start MCP server for AI agent integration."""
     workspace = ctx.obj["workspace"]
-    server = CodeNexusServer(workspace)
-
-    console.print("[bold green]Starting MCP server...[/]")
-    console.print(f"Workspace: {workspace}")
-
+    
     # Index if needed
     if not (workspace / ".codenexus" / "index.db").exists():
-        console.print("[yellow]No index found. Indexing workspace...[/]")
+        from .server import CodeNexusServer
+        server = CodeNexusServer(workspace)
         server.index_workspace()
-
-    # Run MCP server (simplified - real implementation would use stdio)
-    console.print("[bold blue]MCP server ready. Use with Claude Code or other agents.[/]")
+    
+    # Run MCP server via stdio
+    from .mcp_server import CodeNexusMCPServer
+    mcp_server = CodeNexusMCPServer(str(workspace))
+    mcp_server.run()
 
 
 @main.command()
