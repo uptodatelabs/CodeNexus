@@ -113,12 +113,20 @@ AGENTS = {
 class AgentWizard:
     """Setup wizard for AI coding agents."""
     
-    # OpenClaw potential config locations
+    # OpenClaw potential config locations (priority order)
     OPENCLAW_PATHS = [
-        "~/.openclaw",
-        "~/.config/openclaw",
-        "/etc/openclaw",
-        "./.openclaw",
+        "~/.openclaw",           # Managed / local skills
+        "~/.agents",            # Personal agent skills
+        "~/.config/openclaw",   # Alternative config
+        "./.openclaw",          # Local workspace
+    ]
+    
+    # OpenClaw skill locations (priority order)
+    OPENCLAW_SKILL_PATHS = [
+        "~/.openclaw/skills",                    # Managed / local skills
+        "~/.agents/skills",                      # Personal agent skills
+        ".agents/skills",                        # Project agent skills (relative to workspace)
+        "skills",                                # Workspace skills (relative to workspace)
     ]
     
     def __init__(self):
@@ -145,6 +153,22 @@ class AgentWizard:
         local_path = self.workspace / ".openclaw"
         if local_path.exists():
             return local_path
+        
+        return None
+    
+    def _find_openclaw_skills_path(self) -> Optional[Path]:
+        """Find OpenClaw skills directory."""
+        # Check common skill locations
+        for path_str in self.OPENCLAW_SKILL_PATHS:
+            path = Path(path_str).expanduser()
+            if path.exists():
+                return path
+        
+        # Check workspace relative paths
+        for rel_path in ["skills", ".agents/skills"]:
+            full_path = self.workspace / rel_path
+            if full_path.exists():
+                return full_path
         
         return None
     
@@ -317,13 +341,16 @@ class AgentWizard:
     
     def _apply_openclaw_config(self, config, project_path):
         """Apply OpenClaw skill configuration."""
-        # Find OpenClaw path
-        openclaw_path = self._find_openclaw_path()
-        if not openclaw_path:
-            print("[ERROR] OpenClaw installation not found")
-            return False
+        # Find existing OpenClaw skills path or use default
+        skills_path = self._find_openclaw_skills_path()
         
-        skill_dir = openclaw_path / "workspace" / "skills" / "codenexus"
+        if not skills_path:
+            # Create default skills directory
+            skills_path = Path.home() / ".openclaw" / "skills"
+            skills_path.mkdir(parents=True, exist_ok=True)
+            print(f"[INFO] Created skills directory: {skills_path}")
+        
+        skill_dir = skills_path / "codenexus"
         skill_file = skill_dir / "SKILL.md"
         
         # Create directory
@@ -353,7 +380,8 @@ Use CodeNexus to search and analyze code in the workspace.
         with open(skill_file, "w") as f:
             f.write(skill_content)
         
-        print(f"[SUCCESS] Created {skill_file}")
+        print(f"[SUCCESS] Created skill: {skill_file}")
+        print(f"[INFO] Skill will be available to all agents in: {skills_path}")
         return True
     
     def _apply_mcp_config(self, info, config):
