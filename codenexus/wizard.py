@@ -507,42 +507,70 @@ Use CodeNexus to search and analyze code in the workspace.
         """Apply MCP configuration for an agent."""
         config_path = Path(info.config_file).expanduser()
         
-        # Safety check: Don't overwrite YAML files with JSON
-        if config_path.suffix in ['.yaml', '.yml']:
-            print(f"[WARNING] {info.name} uses YAML config format.")
-            print(f"[INFO] Skipping auto-apply for {info.name}.")
-            print(f"[INFO] Please configure manually or use the CLI command:")
-            print(f"  {info.cli_command} codenexus -- codenexus serve -w <project_path>")
-            return False
-        
         # Create parent directory
         config_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Determine file format
+        is_yaml = config_path.suffix in ['.yaml', '.yml']
+        is_toml = config_path.suffix == '.toml'
         
         # Load existing config or create new
         existing_config = {}
         if config_path.exists():
             try:
-                with open(config_path, "r") as f:
-                    existing_config = json.load(f)
-            except (json.JSONDecodeError, FileNotFoundError):
+                if is_yaml:
+                    import yaml
+                    with open(config_path, "r") as f:
+                        existing_config = yaml.safe_load(f) or {}
+                elif is_toml:
+                    try:
+                        import tomllib
+                    except ImportError:
+                        import tomli as tomllib
+                    with open(config_path, "rb") as f:
+                        existing_config = tomllib.load(f)
+                else:
+                    with open(config_path, "r") as f:
+                        existing_config = json.load(f)
+            except Exception as e:
+                print(f"[WARNING] Could not read {config_path}: {e}")
                 existing_config = {}
         
         # Merge configs
         for key, value in config.items():
             if key in existing_config:
-                if isinstance(existing_config[key], dict):
+                if isinstance(existing_config[key], dict) and isinstance(value, dict):
                     existing_config[key].update(value)
                 else:
                     existing_config[key] = value
             else:
                 existing_config[key] = value
         
-        # Write config
-        with open(config_path, "w") as f:
-            json.dump(existing_config, f, indent=2)
-        
-        print(f"[SUCCESS] Updated {config_path}")
-        return True
+        # Write config in appropriate format
+        try:
+            if is_yaml:
+                import yaml
+                with open(config_path, "w") as f:
+                    yaml.dump(existing_config, f, default_flow_style=False, allow_unicode=True)
+            elif is_toml:
+                try:
+                    import tomli_w
+                except ImportError:
+                    print(f"[WARNING] tomli-w not installed. Installing...")
+                    import subprocess
+                    subprocess.check_call([sys.executable, "-m", "pip", "install", "tomli-w"])
+                    import tomli_w
+                with open(config_path, "wb") as f:
+                    tomli_w.dump(existing_config, f)
+            else:
+                with open(config_path, "w") as f:
+                    json.dump(existing_config, f, indent=2)
+            
+            print(f"[SUCCESS] Updated {config_path}")
+            return True
+        except Exception as e:
+            print(f"[ERROR] Could not write {config_path}: {e}")
+            return False
 
 def get_agent_by_name(name):
     name_lower = name.lower()
