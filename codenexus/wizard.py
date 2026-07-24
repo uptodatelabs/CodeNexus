@@ -113,30 +113,140 @@ AGENTS = {
 class AgentWizard:
     """Setup wizard for AI coding agents."""
     
-    # OpenClaw potential config locations (priority order)
-    OPENCLAW_PATHS = [
-        "~/.openclaw",           # Managed / local skills
-        "~/.agents",            # Personal agent skills
-        "~/.config/openclaw",   # Alternative config
-        "./.openclaw",          # Local workspace
-    ]
-    
-    # OpenClaw skill locations (priority order)
-    OPENCLAW_SKILL_PATHS = [
-        "~/.openclaw/skills",                    # Managed / local skills
-        "~/.agents/skills",                      # Personal agent skills
-        ".agents/skills",                        # Project agent skills (relative to workspace)
-        "skills",                                # Workspace skills (relative to workspace)
+    # OpenClaw config file locations
+    OPENCLAW_CONFIG_FILES = [
+        "~/.openclaw/openclaw.json",
+        "~/.config/openclaw/openclaw.json",
+        "./.openclaw/openclaw.json",
     ]
     
     def __init__(self):
         self.workspace = Path.cwd()
     
-    def _find_openclaw_path(self) -> Optional[Path]:
-        """Find OpenClaw installation path."""
+    def _find_openclaw_config(self) -> Optional[Path]:
+        """Find OpenClaw configuration file."""
         import os
         
         # Check environment variable first
+        env_path = os.environ.get("OPENCLAW_HOME") or os.environ.get("OPENCLAW_CONFIG")
+        if env_path:
+            config_file = Path(env_path).expanduser() / "openclaw.json"
+            if config_file.exists():
+                return config_file
+        
+        # Check common locations
+        for path_str in self.OPENCLAW_CONFIG_FILES:
+            path = Path(path_str).expanduser()
+            if path.exists():
+                return path
+        
+        return None
+    
+    def _parse_openclaw_config(self, config_path: Path) -> dict:
+        """Parse openclaw.json and extract workspace/agent info."""
+        try:
+            with open(config_path, "r") as f:
+                config = json.load(f)
+            
+            result = {
+                "config_path": str(config_path),
+                "workspace": None,
+                "agents": [],
+                "skills_path": None,
+            }
+            
+            # Extract workspace from config
+            if "workspace" in config:
+                result["workspace"] = config["workspace"]
+            elif "agents" in config and "defaults" in config["agents"]:
+                if "workspace" in config["agents"]["defaults"]:
+                    result["workspace"] = config["agents"]["defaults"]["workspace"]
+            
+            # Extract agents list
+            if "agents" in config:
+                if "list" in config["agents"]:
+                    result["agents"] = config["agents"]["list"]
+                elif "defaults" in config["agents"]:
+                    result["agents"] = [config["agents"]["defaults"]]
+            
+            # Extract skills path from config
+            if "skills" in config:
+                if "load" in config["skills"] and "extraDirs" in config["skills"]["load"]:
+                    result["skills_path"] = config["skills"]["load"]["extraDirs"]
+            
+            return result
+        except (json.JSONDecodeError, FileNotFoundError) as e:
+            print(f"[WARNING] Could not parse {config_path}: {e}")
+            return {}
+    
+    def _find_openclaw_workspace(self) -> Optional[Path]:
+        """Find OpenClaw workspace from config."""
+        config_path = self._find_openclaw_config()
+        if not config_path:
+            return None
+        
+        config = self._parse_openclaw_config(config_path)
+        
+        # Check workspace in config
+        if config.get("workspace"):
+            workspace = Path(config["workspace"]).expanduser()
+            if workspace.exists():
+                return workspace
+        
+        # Default workspace locations
+        default_workspaces = [
+            Path.home() / ".openclaw" / "workspace",
+            Path.home() / "openclaw-workspace",
+            self.workspace,
+        ]
+        
+        for ws in default_workspaces:
+            if ws.exists():
+                return ws
+        
+        return None
+    
+    def _find_openclaw_skills_path(self) -> Optional[Path]:
+        """Find OpenClaw skills directory."""
+        # Check config for skills path
+        config_path = self._find_openclaw_config()
+        if config_path:
+            config = self._parse_openclaw_config(config_path)
+            if config.get("skills_path"):
+                for path_str in config["skills_path"]:
+                    path = Path(path_str).expanduser()
+                    if path.exists():
+                        return path
+        
+        # Check workspace-relative paths
+        workspace = self._find_openclaw_workspace()
+        if workspace:
+            for rel_path in ["skills", ".agents/skills"]:
+                full_path = workspace / rel_path
+                if full_path.exists():
+                    return full_path
+        
+        # Check default locations
+        default_paths = [
+            Path.home() / ".openclaw" / "skills",
+            Path.home() / ".agents" / "skills",
+        ]
+        
+        for path in default_paths:
+            if path.exists():
+                return path
+        
+        return None
+    
+    def _find_openclaw_path(self) -> Optional[Path]:
+        """Find OpenClaw installation path."""
+        # Check config file first
+        config_path = self._find_openclaw_config()
+        if config_path:
+            return config_path.parent
+        
+        # Check environment variable
+        import os
         env_path = os.environ.get("OPENCLAW_HOME") or os.environ.get("OPENCLAW_CONFIG")
         if env_path:
             path = Path(env_path).expanduser()
@@ -144,31 +254,15 @@ class AgentWizard:
                 return path
         
         # Check common locations
-        for path_str in self.OPENCLAW_PATHS:
-            path = Path(path_str).expanduser()
+        common_paths = [
+            Path.home() / ".openclaw",
+            Path.home() / ".config" / "openclaw",
+            self.workspace / ".openclaw",
+        ]
+        
+        for path in common_paths:
             if path.exists():
                 return path
-        
-        # Check current directory
-        local_path = self.workspace / ".openclaw"
-        if local_path.exists():
-            return local_path
-        
-        return None
-    
-    def _find_openclaw_skills_path(self) -> Optional[Path]:
-        """Find OpenClaw skills directory."""
-        # Check common skill locations
-        for path_str in self.OPENCLAW_SKILL_PATHS:
-            path = Path(path_str).expanduser()
-            if path.exists():
-                return path
-        
-        # Check workspace relative paths
-        for rel_path in ["skills", ".agents/skills"]:
-            full_path = self.workspace / rel_path
-            if full_path.exists():
-                return full_path
         
         return None
     
@@ -192,6 +286,25 @@ class AgentWizard:
                 if found:
                     installed.append(agent_type)
         return installed
+    
+    def get_openclaw_info(self) -> dict:
+        """Get detailed OpenClaw information from config."""
+        config_path = self._find_openclaw_config()
+        if not config_path:
+            return {"status": "not_found"}
+        
+        config = self._parse_openclaw_config(config_path)
+        workspace = self._find_openclaw_workspace()
+        skills_path = self._find_openclaw_skills_path()
+        
+        return {
+            "status": "found",
+            "config_path": str(config_path),
+            "workspace": str(workspace) if workspace else None,
+            "skills_path": str(skills_path) if skills_path else None,
+            "agents": config.get("agents", []),
+            "raw_config": config,
+        }
 
     def get_agent_info(self, agent_type):
         return AGENTS.get(agent_type)
@@ -341,12 +454,18 @@ class AgentWizard:
     
     def _apply_openclaw_config(self, config, project_path):
         """Apply OpenClaw skill configuration."""
-        # Find existing OpenClaw skills path or use default
+        # Find skills path from config or default locations
         skills_path = self._find_openclaw_skills_path()
         
         if not skills_path:
-            # Create default skills directory
-            skills_path = Path.home() / ".openclaw" / "skills"
+            # Try to find workspace and create skills there
+            workspace = self._find_openclaw_workspace()
+            if workspace:
+                skills_path = workspace / "skills"
+            else:
+                # Fallback to default location
+                skills_path = Path.home() / ".openclaw" / "skills"
+            
             skills_path.mkdir(parents=True, exist_ok=True)
             print(f"[INFO] Created skills directory: {skills_path}")
         
