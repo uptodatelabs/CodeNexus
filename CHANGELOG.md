@@ -5,6 +5,13 @@ All notable changes to CodeNexus will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.6] - 2026-07-24
+
+### Fixed
+- `wizard clear` now actually parses each AI agent's config (Claude Code, Hermes, Cursor, Codex, ...) via `agent_parser` to discover CodeNexus-wired projects, instead of only scanning `~/ .codenexus` and home subdirs
+- `wizard clear` only lists projects that have a real index on disk (`find_codenexus_index`)
+- Hardened deletion safety: unique `idx-N` ids, `--dry-run` flag, and path-based confirmation (must type the exact project directory name to delete)
+
 ## [1.1.5] - 2026-07-24
 
 ### Added

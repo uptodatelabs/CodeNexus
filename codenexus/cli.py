@@ -873,52 +873,54 @@ def interactive():
 
 
 @wizard.command()
-def clear():
-    """Clear index data with interactive selection."""
+@click.option("--dry-run", is_flag=True, help="Show what would be deleted without removing anything")
+def clear(dry_run):
+    """Clear index data with interactive selection.
+
+    Parses each detected AI agent's config (Claude Code, Hermes, Cursor,
+    Codex, ...) to find projects wired to CodeNexus via MCP, then lists only
+    the ones that actually have an index on disk so you can delete them.
+
+    Deletion requires typing the exact project directory name for every
+    selected entry, so accidental removal of a real index is avoided.
+    """
     import shutil
     from pathlib import Path
 
-    # Find all .codenexus directories
-    search_paths = [
-        Path.home() / ".codenexus",
-        Path.cwd() / ".codenexus",
-    ]
+    from .agent_parser import find_codenexus_index, get_all_indexed_projects
 
-    # Also search common project locations
-    home = Path.home()
-    for item in home.iterdir():
-        if item.is_dir() and not item.name.startswith("."):
-            codenexus_dir = item / ".codenexus"
-            if codenexus_dir.exists():
-                search_paths.append(codenexus_dir)
+    # 1. Parse every detected agent's config and collect codenexus project paths
+    agent_projects = get_all_indexed_projects()  # {"Claude Code": [{"path": ...}], ...}
 
-    # Find unique .codenexus directories
-    index_dirs = []
-    seen = set()
+    # Map project path -> set of agents that reference it
+    project_to_agents: dict[str, set] = {}
+    for agent_name, projects in agent_projects.items():
+        for proj in projects:
+            p = proj.get("path")
+            if not p:
+                continue
+            project_to_agents.setdefault(p, set()).add(agent_name)
 
-    for path in search_paths:
-        if path.exists() and path.is_dir():
-            real_path = path.resolve()
-            if real_path not in seen:
-                seen.add(real_path)
-                index_dirs.append(path)
+    # 2. Also include the current working directory (common manual case)
+    cwd = str(Path.cwd().resolve())
+    project_to_agents.setdefault(cwd, set())
 
-    if not index_dirs:
-        console.print("[yellow]No CodeNexus index directories found.[/]")
-        return
+    # 3. For each project path, check whether an index actually exists
+    index_entries = []  # list of dicts
+    seen_index_dirs = set()
+    for project_path, agents in project_to_agents.items():
+        index_path = find_codenexus_index(project_path)
+        if not index_path:
+            continue
+        index_dir = index_path.parent  # the .codenexus directory
+        real_dir = index_dir.resolve()
+        if real_dir in seen_index_dirs:
+            continue
+        seen_index_dirs.add(real_dir)
 
-    # Display list
-    console.print("[bold]Found CodeNexus index directories:[/]\n")
-
-    table = Table(title="Index Directories")
-    table.add_column("#", style="cyan")
-    table.add_column("Path", style="green")
-    table.add_column("Size", style="yellow")
-
-    for i, dir_path in enumerate(index_dirs, 1):
-        # Calculate size
+        # Calculate size of the index directory
         total_size = 0
-        for f in dir_path.rglob("*"):
+        for f in index_dir.rglob("*"):
             if f.is_file():
                 total_size += f.stat().st_size
 
@@ -927,57 +929,116 @@ def clear():
             if total_size < 1024 * 1024
             else f"{total_size / (1024 * 1024):.1f} MB"
         )
-        table.add_row(str(i), str(dir_path), size_str)
+        index_entries.append(
+            {
+                "project": project_path,
+                "agents": sorted(agents) if agents else ["(current dir)"],
+                "index_dir": index_dir,
+                "size": size_str,
+            }
+        )
 
+    if not index_entries:
+        console.print(
+            "[yellow]No CodeNexus index found for any detected agent project.[/]"
+        )
+        return
+
+    # 4. Display
+    console.print("[bold]Found CodeNexus indexes:[/]\n")
+
+    table = Table(title="CodeNexus Indexes")
+    table.add_column("ID", style="cyan")
+    table.add_column("Agents", style="magenta")
+    table.add_column("Project Path", style="green")
+    table.add_column("Index Dir", style="yellow")
+    table.add_column("Size", style="blue")
+
+    # Short unique id per entry to avoid positional confusion
+    import os
+
+    for i, e in enumerate(index_entries, 1):
+        e["id"] = f"idx-{i}"
+        # The exact token the user must type to confirm deletion
+        e["confirm_token"] = os.path.basename(os.path.normpath(e["project"]))
+        table.add_row(
+            e["id"],
+            ", ".join(e["agents"]),
+            e["project"],
+            str(e["index_dir"]),
+            e["size"],
+        )
     console.print(table)
 
     # Ask for selection
     console.print("\n[bold]Options:[/]")
-    console.print("  - Enter numbers separated by comma (e.g., 1,3)")
+    console.print("  - Enter IDs separated by comma (e.g., idx-1,idx-3)")
     console.print("  - Enter 'all' to clear all")
     console.print("  - Enter 'q' to cancel")
 
-    selection = input("\nSelect directories to clear: ").strip()
+    selection = input("\nSelect indexes to clear: ").strip()
 
     if selection.lower() == "q":
         console.print("[yellow]Cancelled.[/]")
         return
 
     if selection.lower() == "all":
-        selected_indices = list(range(len(index_dirs)))
+        selected_indices = list(range(len(index_entries)))
     else:
+        id_to_index = {e["id"]: i for i, e in enumerate(index_entries)}
         try:
-            selected_indices = [int(x.strip()) - 1 for x in selection.split(",")]
-        except ValueError:
+            selected_indices = [id_to_index[s.strip()] for s in selection.split(",") if s.strip()]
+        except (KeyError, ValueError):
             console.print("[red]Invalid input.[/]")
             return
 
     # Validate indices
-    valid_indices = [i for i in selected_indices if 0 <= i < len(index_dirs)]
+    valid_indices = [i for i in selected_indices if 0 <= i < len(index_entries)]
 
     if not valid_indices:
         console.print("[red]No valid selections.[/]")
         return
 
-    # Confirm
-    console.print(f"\n[bold]About to clear {len(valid_indices)} index(es):[/]")
+    # 5. Path-based confirmation: type the exact project dir name for each entry
+    console.print(
+        f"\n[bold red]WARNING: This will PERMANENTLY delete {len(valid_indices)} index(es).[/]"
+    )
     for i in valid_indices:
-        console.print(f"  - {index_dirs[i]}")
+        e = index_entries[i]
+        console.print(
+            f"  - [red]{e['project']}[/]  (confirm by typing: [yellow]{e['confirm_token']}[/])"
+        )
 
-    confirm = input("\nConfirm? (y/n): ").strip().lower()
-    if confirm != "y" and confirm != "yes":
-        console.print("[yellow]Cancelled.[/]")
+    if dry_run:
+        console.print("\n[yellow]--dry-run: no files were removed.[/]")
         return
+
+    console.print(
+        "\nTo confirm, type the project directory name for EACH selected index,"
+        "\nor 'all' to confirm every selection. Anything else cancels."
+    )
+
+    typed = input("Type to confirm: ").strip()
+    if typed.lower() == "all":
+        confirmed = set(valid_indices)
+    else:
+        confirmed = set()
+        for i in valid_indices:
+            if typed == index_entries[i]["confirm_token"]:
+                confirmed.add(i)
+        if not confirmed:
+            console.print("[yellow]Cancelled. No indexes were removed.[/]")
+            return
 
     # Clear selected directories
     cleared = 0
-    for i in valid_indices:
+    for i in sorted(confirmed):
         try:
-            shutil.rmtree(index_dirs[i])
-            console.print(f"[green]Cleared: {index_dirs[i]}[/]")
+            shutil.rmtree(index_entries[i]["index_dir"])
+            console.print(f"[green]Cleared: {index_entries[i]['index_dir']}[/]")
             cleared += 1
         except Exception as e:
-            console.print(f"[red]Failed to clear {index_dirs[i]}: {e}[/]")
+            console.print(f"[red]Failed to clear {index_entries[i]['index_dir']}: {e}[/]")
 
     console.print(f"\n[bold green]Cleared {cleared} index(es)[/]")
 
