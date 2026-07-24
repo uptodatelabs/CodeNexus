@@ -220,15 +220,20 @@ class AgentWizard:
     def interactive_setup(self):
         print("\n=== CodeNexus Agent Setup Wizard ===\n")
         installed = self.detect_installed_agents()
+        
         if not installed:
             print("No AI coding agents detected.")
+            print("Please install at least one AI coding agent first.")
             return
+        
         print(f"Detected {len(installed)} AI coding agent(s):")
         for i, agent_type in enumerate(installed, 1):
             info = self.get_agent_info(agent_type)
             print(f"  {i}. {info.name}")
+        
         print()
         choice = input("Select agent number: ").strip()
+        
         try:
             idx = int(choice) - 1
             if 0 <= idx < len(installed):
@@ -236,11 +241,110 @@ class AgentWizard:
                 project_path = input(f"Project path [{self.workspace}]: ").strip()
                 if not project_path:
                     project_path = str(self.workspace)
+                
+                # Show setup guide
                 self.print_setup_guide(selected_agent, Path(project_path))
+                
+                # Ask to apply
+                apply = input("Apply configuration automatically? (y/n): ").strip().lower()
+                if apply == 'y' or apply == 'yes':
+                    self.apply_config(selected_agent, Path(project_path))
+                    print("\n[SUCCESS] Configuration applied!")
+                else:
+                    print("\n[INFO] Configuration not applied. Use the commands above manually.")
             else:
                 print("Invalid selection.")
         except ValueError:
             print("Invalid input.")
+    
+    def apply_config(self, agent_type, project_path):
+        """Apply configuration for an agent."""
+        info = self.get_agent_info(agent_type)
+        if not info:
+            return False
+        
+        config = self.generate_mcp_config(agent_type, project_path)
+        if not config:
+            print(f"[WARNING] No configuration to apply for {info.name}")
+            return False
+        
+        # Special handling for OpenClaw
+        if agent_type == AgentType.OPENCLAW:
+            return self._apply_openclaw_config(config, project_path)
+        
+        # For MCP-based agents
+        if info.mcp_support:
+            return self._apply_mcp_config(info, config)
+        
+        return False
+    
+    def _apply_openclaw_config(self, config, project_path):
+        """Apply OpenClaw skill configuration."""
+        skill_dir = Path.home() / ".openclaw" / "workspace" / "skills" / "codenexus"
+        skill_file = skill_dir / "SKILL.md"
+        
+        # Create directory
+        skill_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Generate SKILL.md content
+        skill_content = f"""---
+name: codenexus
+description: Search and analyze code using CodeNexus
+allowed_tools:
+  - bash
+---
+
+# CodeNexus Skill
+
+Use CodeNexus to search and analyze code in the workspace.
+
+## Commands
+
+- `codenexus index -w {project_path}` - Index the workspace
+- `codenexus search "query"` - Search for code
+- `codenexus pipeline "task"` - Get context for a task
+- `codenexus status` - Check index status
+"""
+        
+        # Write SKILL.md
+        with open(skill_file, "w") as f:
+            f.write(skill_content)
+        
+        print(f"[SUCCESS] Created {skill_file}")
+        return True
+    
+    def _apply_mcp_config(self, info, config):
+        """Apply MCP configuration for an agent."""
+        config_path = Path(info.config_file).expanduser()
+        
+        # Create parent directory
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Load existing config or create new
+        existing_config = {}
+        if config_path.exists():
+            try:
+                with open(config_path, "r") as f:
+                    existing_config = json.load(f)
+            except (json.JSONDecodeError, FileNotFoundError):
+                existing_config = {}
+        
+        # Merge configs
+        for key, value in config.items():
+            if key in existing_config:
+                if isinstance(existing_config[key], dict):
+                    existing_config[key].update(value)
+                else:
+                    existing_config[key] = value
+            else:
+                existing_config[key] = value
+        
+        # Write config
+        with open(config_path, "w") as f:
+            json.dump(existing_config, f, indent=2)
+        
+        print(f"[SUCCESS] Updated {config_path}")
+        return True
 
 def get_agent_by_name(name):
     name_lower = name.lower()
