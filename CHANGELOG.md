@@ -5,6 +5,14 @@ All notable changes to CodeNexus will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.25] - 2026-07-25
+
+### Fixed
+- **`get_context_capsule` returned an empty capsule for multi-word queries.** It passed the whole query string (e.g. `"authentication login"`) straight to `graph.search_nodes()`, which only matches single tokens, so most real queries returned nothing. `run_pipeline` already split the query into keywords and OR-merged results; applied the same keyword-split + dedup logic to `_get_context_capsule` so it returns real nodes. Verified end-to-end over stdio: `get_context_capsule("authentication login")` now returns a 3.8 KB capsule (was 0 bytes before).
+
+### Added
+- Test `test_get_context_capsule_returns_results` — boots the server over real stdio, calls `get_context_capsule` with a multi-word query, and asserts a non-empty capsule + positive token estimate.
+
 ## [1.1.24] - 2026-07-25
 
 ### Fixed

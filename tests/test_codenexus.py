@@ -454,3 +454,37 @@ def test_mcp_server_registers_tools():
         "get_skeleton",
         "index_status",
     }
+
+
+def test_get_context_capsule_returns_results(tmp_path):
+    """get_context_capsule must return real nodes, not an empty capsule.
+
+    Regresses the bug where the query was passed whole to search_nodes
+    (which only matches single tokens), so multi-word queries returned nothing.
+    """
+    import asyncio
+
+    from mcp import ClientSession
+    from mcp.client.stdio import stdio_client, StdioServerParameters
+
+    # Use the real project index so search has something to find
+    ws = Path("/home/rudylee/openclaw_workspace/projects")
+    params = StdioServerParameters(
+        command="codenexus",
+        args=["-w", str(ws), "serve"],
+    )
+
+    async def call():
+        async with stdio_client(params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                res = await session.call_tool(
+                    "get_context_capsule",
+                    {"query": "authentication login", "max_tokens": 2000},
+                )
+                import json
+                return json.loads(res.content[0].text)
+
+    result = asyncio.run(call())
+    assert len(result["capsule"]) > 0, "capsule was empty"
+    assert result["token_estimate"] > 0

@@ -13,7 +13,7 @@ from mcp.types import TextContent, Tool
 
 from .graph import DependencyGraph, Node
 
-SERVER_INFO = {"name": "codenexus", "version": "1.1.24"}
+SERVER_INFO = {"name": "codenexus", "version": "1.1.25"}
 
 
 async def _run_pipeline(workspace: Path, args: dict) -> dict:
@@ -86,7 +86,15 @@ async def _get_context_capsule(workspace: Path, args: dict) -> dict:
         return {"error": "No index found"}
 
     graph = DependencyGraph(db_path)
-    nodes = graph.search_nodes(query, limit=10)
+    keywords = query.lower().split()
+    nodes = []
+    seen_ids = set()
+    for keyword in keywords:
+        results = graph.search_nodes(keyword, limit=10)
+        for node in results:
+            if node.id not in seen_ids:
+                nodes.append(node)
+                seen_ids.add(node.id)
 
     capsule_parts = []
     tokens_used = 0
