@@ -5,6 +5,14 @@ All notable changes to CodeNexus will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.23] - 2026-07-25
+
+### Fixed
+- **`wizard clear` did not list OpenClaw indexes.** `get_all_indexed_projects()` only parsed MCP-based agents (Claude Code, Hermes, Cursor, Codex) and silently ignored OpenClaw, which configures CodeNexus via a `SKILL.md` file rather than an MCP block. Added `OpenClawParser` that extracts the `-w <path>` from the skill definition, and registered it in `get_all_indexed_projects()` so `wizard clear` now shows OpenClaw alongside the MCP agents.
+
+### Added
+- Tests: `test_openclaw_parser_extracts_path`, `test_get_all_indexed_projects_includes_openclaw`.
+
 ## [1.1.22] - 2026-07-25
 
 ### Fixed

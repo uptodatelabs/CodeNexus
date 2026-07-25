@@ -389,3 +389,40 @@ def test_apply_mcp_config_skips_unsupported_format(tmp_path, monkeypatch):
     result = w.apply_config(AgentType.COPILOT, tmp_path / "project")
     assert result is False
     assert "IMPORTANT CONTENT" in md.read_text()  # file untouched
+
+
+def test_openclaw_parser_extracts_path(tmp_path, monkeypatch):
+    """OpenClawParser pulls the -w path out of SKILL.md."""
+    from codenexus.agent_parser import OpenClawParser
+
+    skill = tmp_path / "SKILL.md"
+    skill.write_text(
+        "# CodeNexus Skill\n"
+        "- `codenexus index -w /home/rudylee/openclaw_workspace/projects` - Index\n"
+        "- `codenexus search \"query\"` - Search\n"
+    )
+    parser = OpenClawParser()
+    parser.config_paths = [skill]
+    projects = parser.get_indexed_projects()
+    assert len(projects) == 1
+    assert projects[0]["path"] == "/home/rudylee/openclaw_workspace/projects"
+
+
+def test_get_all_indexed_projects_includes_openclaw(tmp_path, monkeypatch):
+    """get_all_indexed_projects must surface OpenClaw, not just MCP agents."""
+    from codenexus import agent_parser as ap
+
+    skill = tmp_path / "SKILL.md"
+    skill.write_text("- `codenexus -w /tmp/proj serve`\n")
+    parser = ap.OpenClawParser()
+    parser.config_paths = [skill]
+    monkeypatch.setattr(ap, "OpenClawParser", lambda: parser)
+    # Stub the other parsers' config files so they return nothing
+    for cls in (ap.ClaudeCodeParser, ap.HermesParser, ap.CursorParser, ap.CodexParser):
+        inst = cls()
+        inst.config_paths = [tmp_path / "nonexistent"]
+        monkeypatch.setattr(ap, cls.__name__, lambda: inst)
+
+    results = ap.get_all_indexed_projects()
+    assert "OpenClaw" in results
+    assert results["OpenClaw"][0]["path"] == "/tmp/proj"

@@ -218,6 +218,38 @@ class CodexParser(AgentConfigParser):
 
         return projects
 
+class OpenClawParser(AgentConfigParser):
+    """Parse OpenClaw skill definition (SKILL.md) for codenexus paths."""
+
+    def __init__(self):
+        super().__init__()
+        # Mirror wizard._find_openclaw_skills_path() lookup
+        self.config_paths = [
+            Path.home() / '.openclaw' / 'workspace' / 'skills' / 'codenexus' / 'SKILL.md',
+            Path.home() / '.config' / 'openclaw' / 'workspace' / 'skills' / 'codenexus' / 'SKILL.md',
+            Path.home() / '.openclaw' / 'skills' / 'codenexus' / 'SKILL.md',
+        ]
+
+    def parse(self, config_path: Path) -> list[dict]:
+        projects = []
+        try:
+            text = config_path.read_text()
+        except Exception:
+            return projects
+
+        # Match: codenexus ... -w <path> ...  (index or serve)
+        import re
+        for m in re.finditer(r'codenexus\b[^\n]*?-w\s+(\S+)', text):
+            raw = m.group(1).strip()
+            # Drop surrounding backticks/quotes if present
+            project_path = raw.strip('`"')
+            if project_path and project_path not in [p['path'] for p in projects]:
+                projects.append({
+                    'path': project_path,
+                    'config': {'command': 'codenexus', 'args': ['-w', project_path, 'serve']}
+                })
+        return projects
+
 def get_all_indexed_projects() -> dict[str, list[dict]]:
     """Get indexed projects from all detected agents."""
     parsers = {
@@ -225,6 +257,7 @@ def get_all_indexed_projects() -> dict[str, list[dict]]:
         'Hermes': HermesParser(),
         'Cursor': CursorParser(),
         'Codex': CodexParser(),
+        'OpenClaw': OpenClawParser(),
     }
 
     results = {}
