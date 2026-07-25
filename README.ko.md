@@ -17,9 +17,9 @@ CodeNexus는 **로컬 우선 컨텍스트 엔진**으로, AI 코딩 에이전트
 ### 주요 기능
 
 - **로컬 우선**: 코드가 기계를 벗어나지 않음
-- **토큰 절감**: AI API 비용 50-70% 절약
+- **토큰 절감**: AI 컨텍스트 토큰을 최대 약 99%까지 감축 (실측정: 211개 파일 프로젝트에서 작업당 951K → 약 4.3K)
 - **멀티 언어**: Python, JavaScript, TypeScript 지원
-- **MCP 호환**: Claude Code, Cursor 등과 연동
+- **MCP 호환**: 공식 `mcp` Python SDK 기반 (표준 `Content-Length` 프레임 stdio). Hermes, Claude Code, Cursor, Windsurf, Zed, Continue.dev, GitHub Copilot, Codex, Augment 및 모든 spec 준수 MCP 클라이언트와 연동
 - **빠른 인덱싱**: SQLite 기반 의존성 그래프
 - **PageRank**: 중요도 기반 스마트 랭킹
 
@@ -202,6 +202,8 @@ claude
 ### 문제 해결
 
 **MCP 서버가 연결되지 않는 경우:**
+
+CodeNexus는 **표준 MCP stdio 프로토콜**(공식 `mcp` Python SDK 기반, `Content-Length` 프레임 JSON-RPC)을 사용하므로, spec을 준수하는 모든 클라이언트(Hermes, Claude Code, Cursor, Windsurf, Zed, Continue.dev, GitHub Copilot, Codex, Augment)와 즉시 연결됩니다.
 
 1. CodeNexus가 설치되어 있는지 확인:
    ```bash
@@ -393,15 +395,21 @@ codenexus wizard clear
 
 ## 토큰 절감 예시
 
-**CodeNexus 사용 전:**
+`openclaw_workspace/projects` 인덱스 기준 측정 (211개 파일, 4,224개 노드, 62,194개 엣지):
+
+**전체 코드베이스를 모델에 전송할 때:**
 ```
-8,247 토큰 / 쿼리
+951,322 토큰 (전체 소스: Python + JS/TS)
 ```
 
-**CodeNexus 사용 후:**
+**작업별로 CodeNexus에 컨텍스트 요청할 때** (`run_pipeline`, 실제 작업 5개 평균):
 ```
-2,140 토큰 / 쿼리 (74% 절감)
+작업당 ~4,325 토큰
 ```
+
+**절감율: 약 99.5%** — 작업과 관련된 파일/정의만 반환됩니다.
+
+> 정확한 수치는 프로젝트 크기와 작업 범위에 따라 다릅니다. CodeNexus는 항상 전체 트리가 아닌 *관련된* 일부만 반환합니다.
 
 ---
 

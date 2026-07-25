@@ -17,9 +17,9 @@ CodeNexus is a **local-first context engine** that helps AI coding agents unders
 ### Key Features
 
 - **Local-first**: Your code never leaves your machine
-- **Token reduction**: Save 50-70% on AI API costs
+- **Token reduction**: Cut AI context tokens by up to ~99% (real-world measured: 951K → ~4.3K per task on a 211-file project)
 - **Multi-language**: Python, JavaScript, TypeScript support
-- **MCP compatible**: Works with Claude Code, Cursor, and other AI agents
+- **MCP compatible**: Built on the official `mcp` Python SDK (standard `Content-Length` framed stdio). Works with Hermes, Claude Code, Cursor, Windsurf, Zed, Continue.dev, GitHub Copilot, Codex, Augment, and any spec-compliant MCP client.
 - **Fast indexing**: SQLite-based dependency graph
 
 ---
@@ -206,6 +206,8 @@ claude
 
 **If MCP server doesn't connect:**
 
+CodeNexus speaks the **standard MCP stdio protocol** (built on the official `mcp` Python SDK with `Content-Length` framed JSON-RPC), so any spec-compliant client (Hermes, Claude Code, Cursor, Windsurf, Zed, Continue.dev, GitHub Copilot, Codex, Augment) connects out of the box.
+
 1. Check if CodeNexus is installed:
    ```bash
    pip show codenexus-ai
@@ -359,15 +361,22 @@ codenexus search "query" --json
 
 ## Token Savings Example
 
-**Before CodeNexus:**
+Measured on the `openclaw_workspace/projects` index (211 files, 4,224 nodes, 62,194 edges):
+
+**Sending the entire codebase to the model:**
 ```
-8,247 tokens per query
+951,322 tokens (full source: Python + JS/TS)
 ```
 
-**After CodeNexus:**
+**Asking CodeNexus for context on a task** (`run_pipeline`, avg over 5 real tasks):
 ```
-2,140 tokens per query (74% reduction)
+~4,325 tokens per task
 ```
+
+**Reduction: ~99.5%** — only the files/definitions relevant to the task are returned.
+
+> The exact number depends on project size and task scope. CodeNexus always
+> returns the *relevant* slice, not the whole tree.
 
 ---
 

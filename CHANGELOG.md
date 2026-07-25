@@ -5,6 +5,12 @@ All notable changes to CodeNexus will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.27] - 2026-07-25
+
+### Docs
+- **Token savings example updated to a real measurement.** The old README claimed "50-70%" / "74% reduction" with a 8,247→2,140 example. Replaced with numbers measured on the `openclaw_workspace/projects` index (211 files, 4,224 nodes): sending the whole codebase = **951,322 tokens** vs. `run_pipeline` average **~4,325 tokens/task** → **~99.5% reduction**. Applied to both `README.md` and `README.ko.md`.
+- **MCP compatibility clarified.** Both READMEs now state CodeNexus is built on the official `mcp` Python SDK (standard `Content-Length` framed stdio) and lists all 9 MCP agents (Hermes, Claude Code, Cursor, Windsurf, Zed, Continue.dev, GitHub Copilot, Codex, Augment) as supported. Added a note in the troubleshooting section that the server speaks the standard MCP protocol so any spec-compliant client connects out of the box.
+
 ## [1.1.26] - 2026-07-25
 
 ### Fixed

@@ -13,7 +13,7 @@ from mcp.types import TextContent, Tool
 
 from .graph import DependencyGraph, Node
 
-SERVER_INFO = {"name": "codenexus", "version": "1.1.26"}
+SERVER_INFO = {"name": "codenexus", "version": "1.1.27"}
 
 
 async def _run_pipeline(workspace: Path, args: dict) -> dict:
