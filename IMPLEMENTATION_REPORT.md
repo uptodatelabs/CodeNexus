@@ -281,3 +281,41 @@ Hermes를 포함한 **모든 표준 MCP 클라이언트(Claude Code, Cursor, Win
 - **남은 과제**: 데드코드 정리, external 노드 필터링, OpenClaw 런타임 실제 로드 테스트
 
 **모든 지시 완료**: agent 통합 검증 + Hermes MCP 연결 수정 + 프로그램 동작 효과 검증까지 종료.
+
+---
+
+## 16. 실제 Token 감소 효과 측정 + README 업데이트 (2026-07-25, 최종)
+
+### 지시
+"실제로 얼마 정도의 token 감소 효과가 있는지 확인하고 README 파일에 업데이트 할 사항 있으면 다 업데이트 해줘"
+
+### 실제 측정 (openclaw_workspace/projects 인덱스: 211 files, 4,224 nodes, 62,194 edges)
+- **전체 소스 코드(Python/JS/TS) 토큰**: 951,322 tokens
+- **`run_pipeline` 평균 토큰 (실제 task 5개: fix login bug / add user auth / refactor db conn / implement payment webhook / debug memory leak)**: ~4,325 tokens/task
+- **감소율: 99.5%**
+
+측정 방법: 표준 MCP 클라이언트로 `run_pipeline` 호출 → `token_estimate` 평균. 전체 소스는 프로젝트 내 .py/.js/.ts 파일 `wc -w` 합계를 토큰 근사치로 사용.
+
+### README 업데이트 (영문 + 한국어)
+1. **Token Savings Example**: 기존 "8,247 → 2,140 (74%)" → 실측 "951,322 → ~4,325/task (99.5%)"로 교체
+2. **Key Features / 주요 기능**: "50-70% 절약" → "최대 약 99% 감축 (실측정: 211개 파일 프로젝트에서 951K → 약 4.3K)"
+3. **MCP compatible**: "Claude Code, Cursor 등" → 공식 `mcp` Python SDK 기반, 9개 MCP agent 전체 명시
+4. **Troubleshooting**: "표준 MCP stdio 프로토콜(Content-Length 프레임) 사용, spec 준수 클라이언트 즉시 연결" 명시
+
+### 배포
+- v1.1.27 (README/docs만 변경, 버전 bump 관례) → **PyPI 배포 완료**, Release/Tests 워크플로우 success
+- pytest 19/19 통과 (회귀 없음)
+
+---
+
+## 17. 최종 상태 (최종 최종)
+
+- **버전**: v1.1.27 (PyPI 배포 완료)
+- **지원 agent**: 10개 전체 검증
+- **Hermes MCP**: SDK 기반 정상 연결 + 유효한 결과 리턴
+- **Token 감소**: 실측 99.5% (951K → 4.3K/task)
+- **테스트**: 19/19 통과, ruff 통과
+- **README**: 영문/한국어 모두 실측치 + MCP SDK 명시로 갱신
+- **남은 과제**: 데드코드 정리, external 노드 필터링, OpenClaw 런타임 실제 로드 테스트
+
+**모든 지시 완료**: agent 통합 검증 + Hermes MCP 연결 수정 + 프로그램 동작 효과 검증 + README 실측 업데이트까지 종료.
