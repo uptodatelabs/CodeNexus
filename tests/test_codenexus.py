@@ -463,15 +463,27 @@ def test_get_context_capsule_returns_results(tmp_path):
     (which only matches single tokens), so multi-word queries returned nothing.
     """
     import asyncio
+    import subprocess
+
+    # Build a tiny project + its index inside tmp_path (CI-safe, no host paths)
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    (proj / "auth.py").write_text(
+        "def login(user):\n    return user.token\n\n"
+        "def authenticate(req):\n    return req.ok\n"
+    )
+    subprocess.run(
+        ["codenexus", "-w", str(proj), "index"],
+        check=True,
+        capture_output=True,
+    )
 
     from mcp import ClientSession
     from mcp.client.stdio import stdio_client, StdioServerParameters
 
-    # Use the real project index so search has something to find
-    ws = Path("/home/rudylee/openclaw_workspace/projects")
     params = StdioServerParameters(
         command="codenexus",
-        args=["-w", str(ws), "serve"],
+        args=["-w", str(proj), "serve"],
     )
 
     async def call():

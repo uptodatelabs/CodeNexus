@@ -5,6 +5,11 @@ All notable changes to CodeNexus will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.26] - 2026-07-25
+
+### Fixed
+- **CI test `test_get_context_capsule_returns_results` failed** on GitHub Actions: it hard-coded the host path `/home/rudylee/openclaw_workspace/projects`, which does not exist in CI, causing `FileNotFoundError` → `Connection closed`. Rewrote the test to build a tiny project inside pytest's `tmp_path` fixture (`codenexus -w <tmp> index` — note: `-w` comes *before* the `index` subcommand) and assert a non-empty capsule. This also keeps the test host-independent and re-runnable.
+
 ## [1.1.25] - 2026-07-25
 
 ### Fixed
