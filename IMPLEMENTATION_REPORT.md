@@ -234,3 +234,50 @@ Hermes를 포함한 **모든 표준 MCP 클라이언트(Claude Code, Cursor, Win
 - **남은 과제**: 데드코드 정리, external 노드 필터링, OpenClaw 런타임 실제 로드 테스트
 
 **모든 지시 완료**: agent 통합 검증 + Hermes MCP 연결 수정까지 종료.
+
+---
+
+## 14. 프로그램 동작 효과 검증 + get_context_capsule 버그 수정 (2026-07-25, 말미)
+
+### 지시
+"지금 현재 codenexus가 동작하는지 프로그램 동작 효과가 있는지 확인해줘"
+
+### 발견한 문제
+1. **get_context_capsule이 빈 캡슐을 리턴** (다중 단어 쿼리시)
+   - 증상: `run_pipeline`은 12개 파일 추출되는데, `get_context_capsule("authentication login")`은 `capsule: "", token_estimate: 0`
+   - 원인: `_get_context_capsule`가 쿼리 전체를 `graph.search_nodes(query)`에 통째로 넘김. `search_nodes`는 단일 토큰만 매칭하므로 다중 단어 쿼리는 0건
+   - `run_pipeline`은 `task.split()`으로 토큰 분리 후 OR 병합했는데, `get_context_capsule`은 안 했음
+   - 수정: `_get_context_capsule`에도 동일한 keyword-split + dedup 로직 적용 → 캡슐 3888바이트 리턴 (수정 전 0)
+
+2. **site-packages 구버전 사본 재발 (환경 이슈)**
+   - `pip install -e . --force-reinstall` 후에도 site-packages에 `codenexus` 사본(구버전)이 생겨 `codenexus` 바이너리가 구버전 로드
+   - 해결: 사본을 `.bak`으로 백업 → editable `.pth`만 남아 repo 가리킴 확인. 이후 `pip install -e .` 재설치로 `.pth` 복구
+
+3. **CI 테스트 실패 (하드코딩 호스트 경로)**
+   - `test_get_context_capsule_returns_results`가 실제 호스트 경로(`/home/rudylee/openclaw_workspace/...`)를 하드코딩 → CI(ubuntu)에선 FileNotFoundError → Connection closed
+   - 수정: `tmp_path` fixture 안에서 작은 프로젝트 생성 + `codenexus -w <tmp> index` 후 serve 테스트 (호스트 독립적)
+   - 참고: `index` 명령은 `-w`가 서브커맨드 **앞**에 와야 함 (`codenexus -w /path index`, NOT `codenexus index -w /path`)
+
+### 검증 (프로그램 동작 효과 확인)
+표준 MCP 클라이언트(`mcp` SDK ClientSession)로 codenexus serve(1.1.26) 호출:
+- `get_context_capsule("authentication login")`: capsule_len=3888, token_est=481 ✅
+- `run_pipeline("fix login bug")`: pivot_files=12, skeletons=8, token_est=4787 ✅
+- `index_status`: {"status":"healthy","nodes":4224,"edges":62194,"files":211} ✅
+→ **실제 코드 검색/분석 결과가 MCP 툴을 통해 유효하게 리턴됨** (프로그램 동작 효과 있음)
+
+### 배포
+- v1.1.25 (get_context_capsule 수정) → Tests 실패(하드코딩)로 v1.1.26으로 재배포
+- v1.1.26 (CI 테스트 수정) → **PyPI 배포 완료**, Release/Tests 워크플로우 success
+- Hermes gateway restart → codenexus serve(1.1.26) 자동 기동, 로그에 Connection closed 없음
+
+---
+
+## 15. 최종 상태 (최종)
+
+- **버전**: v1.1.26 (PyPI 배포 완료)
+- **지원 agent**: 10개 전체 검증 (MCP 9개 + OpenClaw SKILL.md 1개)
+- **Hermes MCP**: SDK 기반 정상 연결 + get_context_capsule/get_context_capsule 모두 유효한 결과 리턴
+- **테스트**: 19/19 통과, ruff 통과
+- **남은 과제**: 데드코드 정리, external 노드 필터링, OpenClaw 런타임 실제 로드 테스트
+
+**모든 지시 완료**: agent 통합 검증 + Hermes MCP 연결 수정 + 프로그램 동작 효과 검증까지 종료.
