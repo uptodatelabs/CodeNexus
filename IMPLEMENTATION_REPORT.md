@@ -136,3 +136,48 @@
 - **남은 과제**: 위 7절 항목들과 동일 (데드코드, external 노드 필터링, OpenClaw 로드 테스트)
 
 **작업 재개 사유**: 사용자 지적("OpenClaw 인식 안 됨")으로 버그 확인→수정→배포→보고서 갱신 완료. 이상으로 작업을 종료합니다.
+
+---
+
+## 11. 전체 agent 검증 완료 (2026-07-25, 말미)
+
+### 지시
+"mcp를 사용하지 않는 다른 에이전트들도 모두 검증해줘"
+
+### 분석 결과
+- 코드상 `mcp_support=False`인 agent는 **없음** (10개 모두 `mcp_support=True`)
+- MCP가 아닌 통합 방식은 **OpenClaw(SKILL.md)** 하나뿐이며, 이는 `_apply_openclaw_config`가 별도 처리
+- 즉 "MCP를 쓰지 않는 agent"는 OpenClaw뿐이고, 나머지 9개는 MCP 방식
+
+### 검증 범위 확대 (이전 턴까지 미검증 agent)
+이전 턴에서는 Claude Code / OpenClaw / Hermes 3개만 실제 `wizard interactive`로 검증했음. 이번에 **미설치 상태였던 7개 agent**를 강제 설치 흉내(config_file 경로에 파일 생성) 후 실제 `wizard interactive`로 end-to-end 검증:
+
+| Agent | 설정 파일 | 검증 결과 |
+|-------|-----------|-----------|
+| Cursor | `~/.cursor/mcp.json` | ✅ `mcpServers.codenexus` 기록 + 인덱싱 |
+| Windsurf | `~/.windsurf/mcp.json` | ✅ 동일 |
+| GitHub Copilot | `~/.copilot/mcp-config.json` | ✅ 동일 (BUG-2 수정 검증) |
+| Codex | `~/.codex/config.toml` | ✅ `[mcp_servers.codenexus]` TOML 형태 |
+| Zed | `~/.zed/settings.json` | ✅ `mcpServers.codenexus` |
+| Continue.dev | `~/.continue/config.json` | ✅ 동일 |
+| Augment | `~/.augment/settings.json` | ✅ 동일 |
+
+모든 agent가 실제로 설정 파일을 올바른 포맷으로 쓰고, 인덱싱(`_auto_index`)까지 정상 완료됨을 확인.
+
+### 정리
+- 테스트용 temp 프로젝트(`/tmp/proj_*`, `/tmp/cn_wiz`) 삭제 완료
+- 사용자 결정("실제 설치된 agent만 남기고 나머지 삭제")에 따라, 검증 후 생성된 7개 테스트 설정 파일 삭제:
+  `~/.cursor/mcp.json`, `~/.windsurf/mcp.json`, `~/.copilot/mcp-config.json`,
+  `~/.codex/config.toml`, `~/.zed/settings.json`, `~/.continue/config.json`, `~/.augment/settings.json`
+- 최종적으로 실제 설치된 3개(Claude Code, OpenClaw, Hermes) 설정만 유지
+- `wizard detect` / `wizard clear`가 이제 실제 설치된 3개만 인식함을 확인
+
+### 최종 결론
+**지원 agent 10개 전체 검증 완료**:
+- MCP 방식 9개 (Claude Code, Hermes, Cursor, Windsurf, Copilot, Codex, Zed, Continue, Augment)
+- SKILL.md 방식 1개 (OpenClaw)
+- 모든 agent의 설정 생성 로직이 실제 파일 쓰기까지 정상 동작 확인
+- 발견된 버그 3건(BUG-1~3) 모두 수정·배포(v1.1.21~1.1.23)
+- 테스트 17/17 통과, ruff 통과
+
+이상으로 모든 agent 통합 검증을 종료합니다.
