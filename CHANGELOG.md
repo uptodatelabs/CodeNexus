@@ -5,6 +5,15 @@ All notable changes to CodeNexus will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.24] - 2026-07-25
+
+### Fixed
+- **Hermes (and all standard MCP clients) could not connect to the CodeNexus MCP server.** `mcp_server.py` spoke newline-delimited JSON-RPC over stdio, but the `mcp` Python SDK (used by Hermes, Claude Code, Cursor, etc.) expects the framed `Content-Length` transport. Clients failed with `Connection closed` and parked the server. Rewrote `mcp_server.py` on top of the official `mcp` SDK (`Server` + `stdio_server`), so it now speaks the standard MCP stdio protocol. All 4 tools (`run_pipeline`, `get_context_capsule`, `get_skeleton`, `index_status`) are registered via the SDK decorator API.
+
+### Added
+- Test `test_mcp_server_registers_tools` — boots the server over real stdio and asserts all 4 tools are exposed (catches any future transport regression).
+- `mcp` is already a declared dependency (`mcp>=1.0.0`).
+
 ## [1.1.23] - 2026-07-25
 
 ### Fixed

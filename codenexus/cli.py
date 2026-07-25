@@ -23,7 +23,7 @@ console = Console()
 
 @click.group()
 @click.option("--workspace", "-w", default=".", help="Workspace path")
-@click.version_option(version="1.1.23", prog_name="codenexus")
+@click.version_option(version="1.1.24", prog_name="codenexus")
 @click.pass_context
 def main(ctx, workspace):
     """CodeNexus: The context engine for AI coding agents.
@@ -236,11 +236,12 @@ def serve(ctx):
         count = server.index_workspace()
         print(f"Indexed {count} files", file=sys.stderr)
 
-    # Run MCP server via stdio
-    from .mcp_server import CodeNexusMCPServer
+    # Run MCP server via stdio (official mcp SDK handles framing)
+    import asyncio
 
-    mcp_server = CodeNexusMCPServer(str(workspace))
-    mcp_server.run()
+    from .mcp_server import run_server
+
+    asyncio.run(run_server(str(workspace)))
 
 
 @main.command()

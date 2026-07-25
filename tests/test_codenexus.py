@@ -426,3 +426,31 @@ def test_get_all_indexed_projects_includes_openclaw(tmp_path, monkeypatch):
     results = ap.get_all_indexed_projects()
     assert "OpenClaw" in results
     assert results["OpenClaw"][0]["path"] == "/tmp/proj"
+
+
+def test_mcp_server_registers_tools():
+    """The SDK-based MCP server registers all 4 tools (verified over stdio)."""
+    import asyncio
+
+    from mcp import ClientSession
+    from mcp.client.stdio import stdio_client, StdioServerParameters
+
+    params = StdioServerParameters(
+        command="codenexus",
+        args=["-w", str(Path("/tmp").resolve()), "serve"],
+    )
+
+    async def collect():
+        async with stdio_client(params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                tools = await session.list_tools()
+                return {t.name for t in tools.tools}
+
+    names = asyncio.run(collect())
+    assert names == {
+        "run_pipeline",
+        "get_context_capsule",
+        "get_skeleton",
+        "index_status",
+    }
