@@ -103,13 +103,36 @@
 
 ---
 
-## 8. 결론
+## 9. 추가 발견 및 수정 (2026-07-25, 오후)
 
-지원하는 10개 agent 모두에 대해:
-- 설정 생성 로직 검증 완료 (9개는 실제 파일 쓰기 테스트, OpenClaw는 실제 홈 검증)
-- Copilot 치명적 버그(파일 파괴) 수정
-- 회귀 방지 테스트 추가
-- README 문서화
-- v1.1.22로 PyPI 배포 완료
+### [BUG-3] `wizard clear`가 OpenClaw 인덱스를 인식하지 못함
+- **증상**: OpenClaw/Hermes/Claude Code가 모두 같은 폴더(`/home/rudylee/openclaw_workspace/projects`)를 가리키도록 설정했는데, `codenexus wizard clear`를 실행하면 OpenClaw가 목록에 표시되지 않음. MCP 기반 agent(Claude Code, Hermes)만 잡힘.
+- **원인**: `agent_parser.py`의 `get_all_indexed_projects()`가 `ClaudeCodeParser`, `HermesParser`, `CursorParser`, `CodexParser` **4개만** 등록돼 있었음. OpenClaw는 SKILL.md 방식(MCP 블록 없음)이라 파서 자체가 없어서 누락됨.
+- **수정**:
+  1. `OpenClawParser` 클래스 신설 — SKILL.md에서 `codenexus ... -w <path>` 정규식 추출
+  2. `get_all_indexed_projects()`에 `'OpenClaw': OpenClawParser()` 등록
+  3. `wizard clear` 테이블에 "Claude Code, Hermes, OpenClaw" 모두 표시되도록 병합 로직은 이미 동작 (같은 경로면 agent명 합침)
+- **검증**: `wizard clear` 실행 시 OpenClaw 표시 확인, 단위 테스트 2개 추가
+- **배포**: v1.1.23
 
-**완성 기준 충족**: 모든 지원 agent의 통합 코드가 검증됐고, 발견된 버그는 수정·배포됐으며, 테스트와 문서가 갱신됨. 이상으로 작업을 중지합니다.
+### [환경 이슈] site-packages 구버전 사본 재발생
+- 이번 작업 중 `codenexus` 바이너리가 site-packages의 **구버전 사본**(`codenexus_ai-1.1.22.dist-info`)을 로드해 제 수정이 안 반영되는 현상 재발.
+- **조치**: `pip install -e . --no-deps --force-reinstall` (build isolation 켜고) 재실행 → editable 링크 복구, 로컬에서 수정 즉시 반영 확인.
+- **교훈**: 매 작업 전 `codenexus wizard clear`로 변경 반영 여부를 확인해야 하며, non-editable 설치가 섞이지 않게 주의.
+
+### [BUG-2 후속] agent MCP 설정 경로 오염
+- 이전 턴에서 `wizard interactive` 테스트 시 temp 경로(`/tmp/cn_wiz`)를 agent 설정에 남긴 게 실제 환경을 망가뜨림 (projects 폴더 검색 불가).
+- **조치**: `~/.claude.json`, `~/.hermes/config.yaml`, OpenClaw `SKILL.md`의 `-w` 경로를 모두 실제 `projects`로 수정, `/tmp/cn_wiz` codenexus serve 프로세스 강제 종료, Hermes gateway restart.
+- **교훈**: 테스트용 경로를 실제 설정에 쓰지 말고, 테스트 후 반드시 복구하거나 실제 경로로 진행할 것.
+
+---
+
+## 10. 최종 상태 (갱신)
+
+- **버전**: v1.1.23 (PyPI 배포 완료)
+- **지원 agent**: 10개, `wizard clear`가 MCP 4개 + OpenClaw 모두 인식
+- **테스트**: 17/17 통과, ruff 통과
+- **실제 설정**: 3개 agent(Claude Code/Hermes/OpenClaw) 모두 `projects` 폴더 공유 (하나의 index.db)
+- **남은 과제**: 위 7절 항목들과 동일 (데드코드, external 노드 필터링, OpenClaw 로드 테스트)
+
+**작업 재개 사유**: 사용자 지적("OpenClaw 인식 안 됨")으로 버그 확인→수정→배포→보고서 갱신 완료. 이상으로 작업을 종료합니다.
