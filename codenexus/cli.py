@@ -23,7 +23,7 @@ console = Console()
 
 @click.group()
 @click.option("--workspace", "-w", default=".", help="Workspace path")
-@click.version_option(version="1.1.27", prog_name="codenexus")
+@click.version_option(version="1.1.28", prog_name="codenexus")
 @click.pass_context
 def main(ctx, workspace):
     """CodeNexus: The context engine for AI coding agents.
@@ -106,14 +106,48 @@ def search(ctx, query, max_tokens, top):
 @click.pass_context
 def pipeline(ctx, task, max_tokens):
     """Run context pipeline for a task."""
+    from rich.tree import Tree
+
     workspace = ctx.obj["workspace"]
     server = CodeNexusServer(workspace)
 
-    import asyncio
+    data = server._pipeline_data({"task": task, "max_tokens": max_tokens})
 
-    result = asyncio.run(server._run_pipeline({"task": task, "max_tokens": max_tokens}))
+    # Render a structured, readable capsule instead of raw escaped JSON.
+    console.print(f"[bold cyan]Task:[/] {data.get('task', '')}")
+    intent = data.get("intent")
+    if intent:
+        console.print(f"[bold cyan]Detected intent:[/] {intent}")
+    console.print(
+        f"[dim]Token estimate: {data.get('token_estimate', 0)}[/]"
+    )
 
-    console.print(Panel(result[0].text, title="Context Capsule"))
+    pivot = data.get("pivot_files", [])
+    skeletons = data.get("skeletons", [])
+
+    if pivot:
+        console.print()
+        console.print("[bold green]Pivot files (full content):[/]")
+        for pf in pivot:
+            console.print(
+                Panel(
+                    pf.get("content", ""),
+                    title=pf.get("name", "?"),
+                    subtitle=pf.get("path", ""),
+                    expand=False,
+                )
+            )
+
+    if skeletons:
+        console.print()
+        console.print("[bold yellow]Skeletons:[/]")
+        tree = Tree("Referenced symbols")
+        for sk in skeletons:
+            tree.add(f"[dim]{sk.get('path', '')}[/] :: {sk.get('name', '?')}")
+        console.print(tree)
+
+    if not pivot and not skeletons:
+        console.print("[yellow]No relevant context found for this task.[/]")
 
 
 @main.command()
@@ -226,13 +260,22 @@ def serve(ctx):
     """Start MCP server for AI agent integration."""
     workspace = ctx.obj["workspace"]
 
+    from .server import CodeNexusServer
+
+    # Construct the engine (this resolves license gating up front).
+    server = CodeNexusServer(workspace)
+    print(
+        f"[codenexus] Tier: {server.tier.value} | "
+        f"languages: {'all' if server.enabled_languages is None else ', '.join(sorted(server.enabled_languages))} | "
+        f"memory: {'on' if server.memory_enabled else 'off'} | "
+        f"llm: {'on' if server.llm_enabled else 'off'}",
+        file=sys.stderr,
+    )
+
     # Auto-index if not exists
     db_path = workspace / ".codenexus" / "index.db"
     if not db_path.exists():
         print(f"Indexing workspace: {workspace}", file=sys.stderr)
-        from .server import CodeNexusServer
-
-        server = CodeNexusServer(workspace)
         count = server.index_workspace()
         print(f"Indexed {count} files", file=sys.stderr)
 

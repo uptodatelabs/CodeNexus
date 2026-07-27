@@ -352,10 +352,12 @@ codenexus index
 codenexus search "query"
 codenexus pipeline "task"
 codenexus status
-
-# JSON output for programmatic use
-codenexus search "query" --json
 ```
+
+The `pipeline` command prints a **human-readable context capsule** (task,
+detected intent, token estimate, pivot-file panels, and a skeleton tree) rather
+than raw JSON. Programmatic clients (MCP agents) receive the same data as a
+structured JSON payload via the `run_pipeline` tool.
 
 ---
 
@@ -452,10 +454,10 @@ codenexus wizard interactive
 
 ## Roadmap
 
-- [ ] Tree-sitter integration for better parsing
-- [ ] Graph centrality (PageRank) for better ranking
-- [ ] Local LLM support for additional savings
-- [ ] Multi-repo workspace support
+- [x] Tree-sitter integration for better parsing
+- [x] Graph centrality (PageRank) for better ranking
+- [x] Local LLM support for additional savings
+- [x] Multi-repo workspace support
 - [ ] VS Code extension
 
 ---
@@ -475,6 +477,32 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+CodeNexus uses an optional **license tier** that gates features at runtime
+(checked by `CodeNexusServer` on startup). Tiers are enforced automatically —
+no code changes needed:
+
+| Feature            | Free            | Pro / Team / Enterprise |
+|--------------------|-----------------|--------------------------|
+| Languages          | Python, JS, TS  | All 7 (incl. Go, Rust, Java, C#) |
+| Max indexed nodes  | 5,000           | 100,000                  |
+| Session memory     | —               | ✅                        |
+| Local LLM          | —               | ✅                        |
+| Multi-repo         | —               | ✅                        |
+
+Check your tier, or activate a key:
+
+```bash
+codenexus license status
+codenexus license activate CNX-PRO-<owner>-<YYYYMMDD>
+codenexus license features
+```
+
+When you run `codenexus serve`, the active tier is printed to stderr:
+
+```
+[codenexus] Tier: free | languages: javascript, python, typescript | memory: off | llm: off
+```
 
 ---
 
