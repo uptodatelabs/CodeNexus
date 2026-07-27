@@ -24,7 +24,7 @@ def create_server(workspace: str) -> Server:
     ws = Path(workspace)
     engine = CodeNexusServer(ws)
 
-    server = Server("codenexus", version="1.1.31")
+    server = Server("codenexus", version="1.1.32")
 
     @server.list_tools()
     async def list_tools() -> list[Tool]:

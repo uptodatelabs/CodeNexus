@@ -1,5 +1,6 @@
-"""Tests for `wizard clear` index discovery and table rendering."""
+"""Tests for `wizard clear` index discovery and per-index block rendering."""
 
+import json
 import os
 from pathlib import Path
 
@@ -16,9 +17,27 @@ def _make_index(proj: Path, home: Path):
     return srv
 
 
+def _write_claude_config(home: Path, projects: list[Path]):
+    """Write a Claude Code mcp config pointing at `projects`."""
+    cfg = home / ".claude.json"
+    cfg.parent.mkdir(parents=True, exist_ok=True)
+    cfg.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "codenexus": {
+                        "command": "codenexus",
+                        "args": ["-w", str(projects[0]), "serve"],
+                    }
+                }
+            }
+        )
+    )
+
+
 def test_index_entries_grouped_per_project(tmp_path):
     """Each project with an index must appear once, with all referencing
-    agents attached to that single row (no duplicate/merged rows)."""
+    agents attached to that single entry (no duplicate/merged rows)."""
     from codenexus.agent_parser import (
         find_codenexus_index,
         get_all_indexed_projects,
@@ -55,9 +74,10 @@ def test_index_entries_grouped_per_project(tmp_path):
     assert set(entries[0]["agents"]) == {"Claude Code", "Hermes"}
 
 
-def test_clear_table_renders_without_crash(tmp_path, monkeypatch):
-    """The clear table must render (no exception) and show the project path,
-    using a fake HOME so the real user's indexes are never touched."""
+def test_clear_renders_per_index_blocks(tmp_path, monkeypatch):
+    """Two indexes with different agent sets must render as separate blocks
+    (idx-1, idx-2) with Agents/Project Path/Size on distinct lines, and must
+    not interleave. Uses a fake HOME so real indexes are never touched."""
     from click.testing import CliRunner
 
     from codenexus.cli import main as cli
@@ -65,19 +85,53 @@ def test_clear_table_renders_without_crash(tmp_path, monkeypatch):
     fakehome = tmp_path / "fakehome"
     fakehome.mkdir()
 
-    proj = tmp_path / "deeply" / "nested" / "project" / "dir"
-    proj.mkdir(parents=True)
-    _make_index(proj, fakehome)
+    # idx-1: a project referenced by several agents; idx-2: one agent only.
+    proj_a = tmp_path / "proj_a"
+    proj_a.mkdir()
+    proj_b = tmp_path / "proj_b"
+    proj_b.mkdir()
+
+    # Claude Code points at proj_a; Hermes also at proj_a (multi-agent).
+    (fakehome / ".claude.json").write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "codenexus": {
+                        "command": "codenexus",
+                        "args": ["-w", str(proj_a), "serve"],
+                    }
+                }
+            }
+        )
+    )
+    (fakehome / ".hermes").mkdir(parents=True)
+    (fakehome / ".hermes" / "config.yaml").write_text(
+        "mcp_servers:\n  codenexus:\n    command: codenexus\n"
+        f'    args: ["-w", "{proj_a}", "serve"]\n'
+    )
+    # OpenClaw skill points at proj_b (single agent).
+    skill = fakehome / ".openclaw" / "workspace" / "skills" / "codenexus"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text(
+        f"codenexus -w {proj_b} serve\n"
+    )
+
+    _make_index(proj_a, fakehome)
+    _make_index(proj_b, fakehome)
 
     monkeypatch.setenv("HOME", str(fakehome))
-    monkeypatch.chdir(proj)  # clear() also scans the current directory
 
     runner = CliRunner()
-    # Point the runner at our temp project so only it is discovered.
-    result = runner.invoke(
-        cli, ["-w", str(proj), "wizard", "clear", "--all", "--yes"]
-    )
+    result = runner.invoke(cli, ["wizard", "clear", "--all", "--yes"])
     assert result.exit_code == 0, result.output
-    assert "CodeNexus Indexes" in result.output
-    # Path must be visible (not silently dropped) in the rendered table.
-    assert "project" in result.output or "dir" in result.output
+
+    # Both index blocks are present and labelled by ID.
+    assert "idx-1" in result.output
+    assert "idx-2" in result.output
+    # Each block shows the three fields on their own lines.
+    assert "Agents" in result.output
+    assert "Project Path" in result.output
+    assert "Size" in result.output
+    # The path leaf must be visible (not silently dropped).
+    assert "proj_a" in result.output
+    assert "proj_b" in result.output

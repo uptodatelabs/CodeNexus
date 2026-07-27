@@ -23,7 +23,7 @@ console = Console()
 
 @click.group()
 @click.option("--workspace", "-w", default=".", help="Workspace path")
-@click.version_option(version="1.1.31", prog_name="codenexus")
+@click.version_option(version="1.1.32", prog_name="codenexus")
 @click.pass_context
 def main(ctx, workspace):
     """CodeNexus: The context engine for AI coding agents.
@@ -989,56 +989,46 @@ def clear(clear_all, yes):
         )
         return
 
-    # 4. Display
+    # 4. Display — one block per index so Agents / Project Path / Size are
+    # clearly separated by ID and never interleave.
     console.print("[bold]Found CodeNexus indexes:[/]\n")
 
-    def _shorten(path: str) -> list[str]:
-        """Return a path as a list of display lines (~ for $HOME).
-
-        Splitting at separators lets each line wrap cleanly so the row height
-        stays aligned with other columns.
-        """
+    def _shorten(path: str) -> str:
+        """Compact a path for display: ~ for $HOME, keep the tail segments."""
         home = str(Path.home())
         if path.startswith(home):
             path = "~" + path[len(home):]
-        # Keep the leading ~ and the last three segments; elide the middle.
         if len(path) > 50:
             parts = [p for p in path.split("/") if p]
             if len(parts) > 3:
-                path = "/".join(["~" if parts[0] == "~" else parts[0]] + ["…"] + parts[-3:])
-        # One line per path segment.
-        return [seg for seg in path.split("/")]
+                path = "/".join(
+                    ["~" if parts[0] == "~" else parts[0]] + ["…"] + parts[-3:]
+                )
+        return path
 
-    def _agents_lines(agents: list[str]) -> list[str]:
-        """One agent per line so the cell never wraps mid-list."""
-        return list(agents)
-
-    def _pad(lines: list[str], height: int) -> list[str]:
-        return lines + [""] * max(0, height - len(lines))
-
-    table = Table(title="CodeNexus Indexes", expand=False, padding=(0, 1))
-    table.add_column("ID", style="cyan", no_wrap=True)
-    table.add_column("Agents", style="magenta", no_wrap=True)
-    table.add_column("Project Path", style="green", no_wrap=True)
-    table.add_column("Size", style="blue", no_wrap=True)
-
-    # Short unique id per entry to avoid positional confusion
     import os
 
     for i, e in enumerate(index_entries, 1):
         e["id"] = f"idx-{i}"
         # The exact token the user must type to confirm deletion
         e["confirm_token"] = os.path.basename(os.path.normpath(e["project"]))
-        agent_lines = _agents_lines(e["agents"])
-        path_lines = _shorten(e["project"])
-        height = max(len(agent_lines), len(path_lines), 1)
-        table.add_row(
-            e["id"],
-            "\n".join(_pad(agent_lines, height)),
-            "\n".join(_pad(path_lines, height)),
-            e["size"],
+
+        block = Table(show_header=False, show_edge=False, padding=(0, 2))
+        block.add_column("Field", style="bold cyan", no_wrap=True)
+        block.add_column("Value", overflow="fold")
+        block.add_row("Agents", ", ".join(e["agents"]) or "(current dir)")
+        block.add_row("Project Path", _shorten(e["project"]))
+        block.add_row("Size", e["size"])
+
+        console.print(
+            Panel(
+                block,
+                title=f"[bold]{e['id']}[/bold]",
+                subtitle=f"[blue]{e['size']}[/blue]",
+                border_style="cyan",
+                expand=False,
+            )
         )
-    console.print(table)
 
     # Read all of stdin up front so click does not try to interpret leftover
     # piped input as additional command-line arguments (which caused a
