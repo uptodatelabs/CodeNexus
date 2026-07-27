@@ -23,7 +23,7 @@ console = Console()
 
 @click.group()
 @click.option("--workspace", "-w", default=".", help="Workspace path")
-@click.version_option(version="1.1.30", prog_name="codenexus")
+@click.version_option(version="1.1.31", prog_name="codenexus")
 @click.pass_context
 def main(ctx, workspace):
     """CodeNexus: The context engine for AI coding agents.
@@ -992,11 +992,11 @@ def clear(clear_all, yes):
     # 4. Display
     console.print("[bold]Found CodeNexus indexes:[/]\n")
 
-    def _shorten(path: str) -> str:
-        """Compact a path for display: ~ for $HOME, keep the tail segments.
+    def _shorten(path: str) -> list[str]:
+        """Return a path as a list of display lines (~ for $HOME).
 
-        Inserts newlines after each path separator so rich's table wraps the
-        path cleanly instead of truncating a long unbreakable token.
+        Splitting at separators lets each line wrap cleanly so the row height
+        stays aligned with other columns.
         """
         home = str(Path.home())
         if path.startswith(home):
@@ -1006,13 +1006,20 @@ def clear(clear_all, yes):
             parts = [p for p in path.split("/") if p]
             if len(parts) > 3:
                 path = "/".join(["~" if parts[0] == "~" else parts[0]] + ["…"] + parts[-3:])
-        # Make the path wrappable at separators.
-        return path.replace("/", "/\n")
+        # One line per path segment.
+        return [seg for seg in path.split("/")]
 
-    table = Table(title="CodeNexus Indexes", expand=False)
+    def _agents_lines(agents: list[str]) -> list[str]:
+        """One agent per line so the cell never wraps mid-list."""
+        return list(agents)
+
+    def _pad(lines: list[str], height: int) -> list[str]:
+        return lines + [""] * max(0, height - len(lines))
+
+    table = Table(title="CodeNexus Indexes", expand=False, padding=(0, 1))
     table.add_column("ID", style="cyan", no_wrap=True)
-    table.add_column("Agents", style="magenta", overflow="fold")
-    table.add_column("Project Path", style="green", overflow="fold")
+    table.add_column("Agents", style="magenta", no_wrap=True)
+    table.add_column("Project Path", style="green", no_wrap=True)
     table.add_column("Size", style="blue", no_wrap=True)
 
     # Short unique id per entry to avoid positional confusion
@@ -1022,10 +1029,13 @@ def clear(clear_all, yes):
         e["id"] = f"idx-{i}"
         # The exact token the user must type to confirm deletion
         e["confirm_token"] = os.path.basename(os.path.normpath(e["project"]))
+        agent_lines = _agents_lines(e["agents"])
+        path_lines = _shorten(e["project"])
+        height = max(len(agent_lines), len(path_lines), 1)
         table.add_row(
             e["id"],
-            ", ".join(e["agents"]),
-            _shorten(e["project"]),
+            "\n".join(_pad(agent_lines, height)),
+            "\n".join(_pad(path_lines, height)),
             e["size"],
         )
     console.print(table)
