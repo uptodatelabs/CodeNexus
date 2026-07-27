@@ -12,14 +12,14 @@
 
 ## What is CodeNexus?
 
-CodeNexus is a **local-first context engine** that helps AI coding agents understand your codebase better. It builds a live dependency graph of your code and serves only the relevant context to AI agents, reducing token usage by **50-70%** while improving code quality.
+CodeNexus is a **local-first context engine** that helps AI coding agents understand your codebase better. It builds a live dependency graph of your code and serves only the relevant context to AI agents, reducing token usage by **up to ~99%** (real-world measured) while improving code quality.
 
 ### Key Features
 
 - **Local-first**: Your code never leaves your machine
 - **Token reduction**: Cut AI context tokens by up to ~99% (real-world measured: 951K → ~4.3K per task on a 211-file project)
-- **Multi-language**: Python, JavaScript, TypeScript support
-- **MCP compatible**: Built on the official `mcp` Python SDK (standard `Content-Length` framed stdio). Works with Hermes, Claude Code, Cursor, Windsurf, Zed, Continue.dev, GitHub Copilot, Codex, Augment, and any spec-compliant MCP client.
+- **Multi-language**: Python, JavaScript, TypeScript, Go, Rust, Java, C# (7 languages)
+- **MCP compatible**: Built on the official `mcp` Python SDK (standard `Content-Length` framed stdio). Works with Hermes, Claude Code, Cursor, Windsurf, Zed, Continue.dev, GitHub Copilot, Codex, Augment, OpenCode, Antigravity, and any spec-compliant MCP client.
 - **Fast indexing**: SQLite-based dependency graph
 
 ---
@@ -251,6 +251,8 @@ for each.
 | Zed | `~/.zed/settings.json` | `mcpServers` |
 | Continue.dev | `~/.continue/config.json` | `mcpServers` |
 | Augment | `~/.augment/settings.json` | `mcpServers` |
+| OpenCode | `~/.config/opencode/opencode.jsonc` | `mcp` |
+| Antigravity | `~/.gemini/config/mcp_config.json` | `mcpServers` |
 | Hermes Agent | `~/.hermes/config.yaml` | `mcp_servers` |
 | Codex | `~/.codex/config.toml` | `mcp_servers` |
 | OpenClaw | `~/.openclaw/workspace/skills/codenexus/SKILL.md` | skill |
@@ -336,11 +338,64 @@ mcp_servers:
 ```
 
 **3. Usage in Hermes:**
-
-```
+**3. Usage in Hermes:**
+```bash
 /hermes search "authentication middleware"
 /hermes pipeline "fix login bug"
 ```
+
+### OpenCode Integration
+
+[OpenCode](https://opencode.ai/) is an open-source AI coding agent. CodeNexus is wired up with its CLI.
+
+**1. Install CodeNexus:**
+```bash
+pip install codenexus-ai
+```
+
+**2. Add the MCP server (auto-configures `~/.config/opencode/opencode.jsonc`):**
+```bash
+opencode mcp add codenexus -- codenexus -w /path/to/your/project serve
+```
+
+Or let the wizard do it:
+```bash
+codenexus wizard setup opencode
+```
+
+**3. Verify:**
+```bash
+opencode mcp list
+# → ✓ codenexus connected
+```
+
+### Antigravity Integration
+
+[Antigravity](https://antigravity.google/) (Google's agentic IDE/CLI, `agy`) supports MCP via its config file. It has no `mcp add` CLI subcommand, so the server block is injected into the config.
+
+**1. Install CodeNexus:**
+```bash
+pip install codenexus-ai
+```
+
+**2. Apply config via the wizard (writes `~/.gemini/config/mcp_config.json`):**
+```bash
+codenexus wizard setup antigravity
+```
+
+Or add manually to `~/.gemini/config/mcp_config.json` (or your workspace `.agents/mcp_config.json`):
+```json
+{
+  "mcpServers": {
+    "codenexus": {
+      "command": "codenexus",
+      "args": ["-w", "/path/to/your/project", "serve"]
+    }
+  }
+}
+```
+
+**3. Reload** in the Antigravity CLI/IDE via `/mcp`, then use CodeNexus through the `run_pipeline` / `get_context_capsule` tools.
 
 ### Other Agents
 
