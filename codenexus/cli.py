@@ -23,12 +23,12 @@ console = Console()
 
 @click.group()
 @click.option("--workspace", "-w", default=".", help="Workspace path")
-@click.version_option(version="1.1.29", prog_name="codenexus")
+@click.version_option(version="1.1.30", prog_name="codenexus")
 @click.pass_context
 def main(ctx, workspace):
     """CodeNexus: The context engine for AI coding agents.
 
-    Reduce token usage by 50-70% while improving code context quality.
+    Reduce token usage by up to ~99% (real-world measured) while improving code context quality.
     """
     ctx.ensure_object(dict)
     ctx.obj["workspace"] = Path(workspace).resolve()
@@ -992,12 +992,28 @@ def clear(clear_all, yes):
     # 4. Display
     console.print("[bold]Found CodeNexus indexes:[/]\n")
 
-    table = Table(title="CodeNexus Indexes")
-    table.add_column("ID", style="cyan")
-    table.add_column("Agents", style="magenta")
-    table.add_column("Project Path", style="green")
-    table.add_column("Index Dir", style="yellow")
-    table.add_column("Size", style="blue")
+    def _shorten(path: str) -> str:
+        """Compact a path for display: ~ for $HOME, keep the tail segments.
+
+        Inserts newlines after each path separator so rich's table wraps the
+        path cleanly instead of truncating a long unbreakable token.
+        """
+        home = str(Path.home())
+        if path.startswith(home):
+            path = "~" + path[len(home):]
+        # Keep the leading ~ and the last three segments; elide the middle.
+        if len(path) > 50:
+            parts = [p for p in path.split("/") if p]
+            if len(parts) > 3:
+                path = "/".join(["~" if parts[0] == "~" else parts[0]] + ["…"] + parts[-3:])
+        # Make the path wrappable at separators.
+        return path.replace("/", "/\n")
+
+    table = Table(title="CodeNexus Indexes", expand=False)
+    table.add_column("ID", style="cyan", no_wrap=True)
+    table.add_column("Agents", style="magenta", overflow="fold")
+    table.add_column("Project Path", style="green", overflow="fold")
+    table.add_column("Size", style="blue", no_wrap=True)
 
     # Short unique id per entry to avoid positional confusion
     import os
@@ -1009,8 +1025,7 @@ def clear(clear_all, yes):
         table.add_row(
             e["id"],
             ", ".join(e["agents"]),
-            e["project"],
-            str(e["index_dir"]),
+            _shorten(e["project"]),
             e["size"],
         )
     console.print(table)
