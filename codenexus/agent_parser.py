@@ -223,12 +223,68 @@ class OpenClawParser(AgentConfigParser):
 
     def __init__(self):
         super().__init__()
-        # Mirror wizard._find_openclaw_skills_path() lookup
-        self.config_paths = [
+        # OpenClaw stores skills under its workspace. The workspace can be
+        # declared in ~/.openclaw/openclaw.json ("workspace" key) or fall back
+        # to known default locations. Mirror wizard._find_openclaw_workspace()
+        # so the parser reads the SAME path the wizard writes to.
+        paths = [
             Path.home() / '.openclaw' / 'workspace' / 'skills' / 'codenexus' / 'SKILL.md',
             Path.home() / '.config' / 'openclaw' / 'workspace' / 'skills' / 'codenexus' / 'SKILL.md',
             Path.home() / '.openclaw' / 'skills' / 'codenexus' / 'SKILL.md',
         ]
+        ws = self._resolve_openclaw_workspace()
+        if ws:
+            paths.append(ws / 'skills' / 'codenexus' / 'SKILL.md')
+            paths.append(ws / '.agents' / 'skills' / 'codenexus' / 'SKILL.md')
+        self.config_paths = paths
+
+    @staticmethod
+    def _resolve_openclaw_workspace() -> Path | None:
+        """Find the real OpenClaw workspace, matching wizard lookup.
+
+        OpenClaw stores the workspace under ``agents.defaults.workspace``
+        (nested), not at the top level, so we must dig into that key.
+        """
+        candidates = [
+            Path.home() / '.openclaw' / 'openclaw.json',
+            Path.home() / '.config' / 'openclaw' / 'openclaw.json',
+        ]
+        for cfg in candidates:
+            if not cfg.exists():
+                continue
+            try:
+                import json
+                data = json.loads(cfg.read_text())
+            except Exception:
+                continue
+            # Top-level workspace
+            ws = data.get('workspace')
+            if ws:
+                p = Path(ws).expanduser()
+                if p.exists():
+                    return p
+            # Nested: agents.defaults.workspace (the real location)
+            agents = data.get('agents')
+            if isinstance(agents, dict):
+                defaults = agents.get('defaults')
+                if isinstance(defaults, dict) and defaults.get('workspace'):
+                    p = Path(defaults['workspace']).expanduser()
+                    if p.exists():
+                        return p
+                # Per-agent workspaces (use the first that exists)
+                for agent in agents.get('list', []):
+                    if isinstance(agent, dict) and agent.get('workspace'):
+                        p = Path(agent['workspace']).expanduser()
+                        if p.exists():
+                            return p
+        # 2. Default locations
+        for ws in (
+            Path.home() / '.openclaw' / 'workspace',
+            Path.home() / 'openclaw-workspace',
+        ):
+            if ws.exists():
+                return ws
+        return None
 
     def parse(self, config_path: Path) -> list[dict]:
         projects = []
