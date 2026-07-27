@@ -51,7 +51,7 @@ class CodeNexusServer:
 
         self.graph = DependencyGraph(self.db_path)
         self.parser = CodeParser()
-        self.server = Server("codenexus", version="1.1.37")
+        self.server = Server("codenexus", version="1.1.38")
         self.max_workers = max_workers
 
         # --- License gating (single source of truth) ---
