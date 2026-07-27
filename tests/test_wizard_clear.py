@@ -127,6 +127,39 @@ def test_clear_merges_agents_same_index(tmp_path, monkeypatch):
     assert "OpenClaw" not in result.output
 
 
+def test_clear_warns_unindexed_agent(tmp_path, monkeypatch):
+    """An agent whose configured path has NO index must appear in a warning
+    (not silently vanish), so the user knows why it's absent from the table."""
+    from click.testing import CliRunner
+
+    from codenexus.cli import main as cli
+
+    fakehome = tmp_path / "fakehome"
+    fakehome.mkdir()
+
+    proj_a = tmp_path / "proj_a"
+    proj_a.mkdir()
+    _make_index(proj_a, fakehome)
+
+    # claude points at the indexed proj_a; opencode points at a path with no
+    # index (proj_b, never indexed).
+    proj_b = tmp_path / "proj_b"
+    proj_b.mkdir()
+    _write_agent_configs(fakehome, {"claude": proj_a, "opencode": proj_b})
+
+    monkeypatch.setenv("HOME", str(fakehome))
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["wizard", "clear", "--all", "--yes"])
+    assert result.exit_code == 0, result.output
+    # Indexed agent shows in the table.
+    assert "Claude Code" in result.output
+    # Unindexed agent is called out in the warning, not dropped silently.
+    assert "Warning" in result.output
+    assert "OpenCode" in result.output
+    assert "no index found" in result.output
+
+
 def test_clear_separates_distinct_indexes(tmp_path, monkeypatch):
     """Two different indexes must appear as two separate blocks."""
     from click.testing import CliRunner

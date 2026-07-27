@@ -23,7 +23,7 @@ console = Console()
 
 @click.group()
 @click.option("--workspace", "-w", default=".", help="Workspace path")
-@click.version_option(version="1.1.33", prog_name="codenexus")
+@click.version_option(version="1.1.34", prog_name="codenexus")
 @click.pass_context
 def main(ctx, workspace):
     """CodeNexus: The context engine for AI coding agents.
@@ -951,9 +951,12 @@ def clear(clear_all, yes):
     project_to_agents.setdefault(cwd, set())
 
     # 3. For each project path, find the real index directory and merge all
-    #    agents that point at the same index into a single entry.
+    #    agents that point at the same index into a single entry. Agents whose
+    #    configured path has no index are collected for a warning so the user
+    #    understands why they don't appear in the table.
     index_entries = []  # list of dicts
     dir_to_entry: dict[str, dict] = {}  # real_index_dir -> entry (for merging)
+    unindexed_agents: list[tuple[str, str]] = []  # (agent, configured_path)
 
     cwd = str(Path.cwd().resolve())
 
@@ -963,6 +966,9 @@ def clear(clear_all, yes):
     for project_path, agents in project_to_agents.items():
         index_path = find_codenexus_index(project_path)
         if not index_path:
+            # Configured path has no index on disk — remember for the warning.
+            for agent in agents:
+                unindexed_agents.append((agent, project_path))
             continue
         index_dir = index_path.parent  # the .codenexus directory
         real_dir = str(index_dir.resolve())
@@ -1002,6 +1008,28 @@ def clear(clear_all, yes):
     # 4. Display — one block per index so Agents / Project Path / Size are
     # clearly separated by ID and never interleave.
     console.print("[bold]Found CodeNexus indexes:[/]\n")
+
+    if unindexed_agents:
+        # Warn about configured agents whose path has no index on disk, so the
+        # user understands why they are absent from the table above.
+        from rich.panel import Panel as _Panel
+
+        warn_lines = []
+        for agent, path in sorted(set(unindexed_agents)):
+            warn_lines.append(f"  • {agent}  ([dim]{path}[/dim])")
+        console.print(
+            _Panel(
+                "[yellow]"
+                + "Configured but no index found at the configured path:\n"
+                + "\n".join(warn_lines)
+                + "\n\nRun [bold]codenexus index -w <path>[/bold] for each, or point the "
+                "agent's -w at an already-indexed project."
+                + "[/yellow]",
+                title="[yellow]Warning[/yellow]",
+                border_style="yellow",
+                expand=False,
+            )
+        )
 
     def _shorten(path: str) -> str:
         """Compact a path for display: ~ for $HOME, keep the tail segments."""
