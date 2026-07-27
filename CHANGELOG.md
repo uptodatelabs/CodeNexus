@@ -5,6 +5,59 @@ All notable changes to CodeNexus will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.36] - 2026-07-27
+
+### Fixed
+- **wizard interactive writes to the paths agents actually read.** Two path-mismatch bugs made "wizard interactive sets 5 agents but clear shows them split/missing":
+  - OpenCode `config_file` was `~/.opencode/opencode.jsonc` (a path OpenCode never reads). OpenCode uses the XDG path `~/.config/opencode/opencode.jsonc`. wizard wrote there and printed `[SUCCESS]` while the real file was untouched.
+  - OpenClaw parser also scanned the stale default `~/.openclaw/workspace/skills` path; a leftover SKILL.md there pointed at a different project, splitting the table.
+- Both fixed: OpenCode now writes to the real XDG path; OpenClawParser resolves ONLY the real workspace from `openclaw.json` (`agents.defaults.workspace`).
+
+### Added
+- `wizard clear` warns about configured agents whose path has no index (no agent vanishes silently).
+
+## [1.1.35] - 2026-07-27
+
+### Fixed
+- OpenClaw parser reads the nested workspace skill (`agents.defaults.workspace` in `openclaw.json`), matching where wizard writes it. Previously the parser used a hardcoded default path and dropped OpenClaw from `wizard clear` after a clean wizard setup.
+
+## [1.1.34] - 2026-07-27
+
+### Fixed
+- `wizard clear` now collects agents whose configured path has no index and prints a Warning panel (configured path + guidance), so missing agents are visible instead of silently dropped.
+
+## [1.1.33] - 2026-07-27
+
+### Fixed
+- `find_codenexus_index()` walks DOWN one level from an ancestor path to locate the index (agent config pointing at a parent dir now resolves correctly).
+- `wizard clear` merges agents from every path that resolves to the same index dir into a single entry instead of dropping duplicates.
+
+## [1.1.32] - 2026-07-27
+
+### Changed
+- `wizard clear` renders one Panel per index. Each block shows Agents / Project Path / Size on their own lines under the `idx-N` title, so columns never interleave and Size is clearly its own row.
+
+## [1.1.31] - 2026-07-27
+
+### Fixed
+- `wizard clear` table: fixed path truncation and row-height misalignment by keeping each cell's line count in sync per row.
+
+## [1.1.30] - 2026-07-27
+
+### Fixed
+- `wizard clear` table renders long paths without truncation (compact `~` form, `overflow="fold"` + `no_wrap`).
+
+## [1.1.29] - 2026-07-27
+
+### Added
+- OpenCode and Antigravity agent support (config generation + parsers).
+- Productization: structured `pipeline` output, license/memory/llm gates wired through `server.py` as single source of truth, `mcp_server.py` thin transport.
+
+## [1.1.28] - 2026-07-25
+
+### Fixed
+- Server version string made explicit (`Server("codenexus", version=...)`) so `serve` reports the real version instead of the SDK default.
+
 ## [1.1.27] - 2026-07-25
 
 ### Docs
