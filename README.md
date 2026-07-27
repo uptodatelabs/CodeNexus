@@ -419,10 +419,20 @@ codenexus wizard setup copilot
 # Codex
 codenexus wizard setup codex
 
+# OpenCode (open-source CLI)
+codenexus wizard setup opencode
+
+# Antigravity (Google agentic IDE/CLI — `agy`)
+codenexus wizard setup antigravity
+
 # And more...
 ```
 
 **Note:** Setup will automatically index your project after configuration.
+
+> **Agent-specific notes**
+> - **OpenCode** is configured via its CLI (`opencode mcp add codenexus -- codenexus -w <project> serve`), which writes `~/.config/opencode/opencode.jsonc` (JSON5). CodeNexus reads this back automatically.
+> - **Antigravity** has no `mcp add` CLI subcommand, so CodeNexus injects the server block into `~/.gemini/config/mcp_config.json` (or your workspace `.agents/mcp_config.json`). After applying, reload via `/mcp` in the Antigravity CLI/IDE.
 
 ### Clear Index Data
 

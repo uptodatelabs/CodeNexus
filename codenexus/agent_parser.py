@@ -17,7 +17,7 @@ class AgentConfigParser:
                 return path
         return None
 
-    def parse(self, config_path: Path) -> dict:
+    def parse(self, config_path: Path) -> list[dict]:
         """Parse config file and return indexed projects."""
         raise NotImplementedError
 
@@ -250,6 +250,86 @@ class OpenClawParser(AgentConfigParser):
                 })
         return projects
 
+class OpenCodeParser(AgentConfigParser):
+    """Parse OpenCode opencode.jsonc (JSON5) for codenexus MCP server.
+
+    OpenCode stores MCP servers under the ``mcp`` key (not ``mcpServers``)
+    and writes the config to ``~/.config/opencode/opencode.jsonc`` (XDG dir).
+    Example entry::
+
+        {
+          "mcp": {
+            "codenexus": {"type": "local", "command": ["codenexus", "-w", "/p", "serve"]}
+          }
+        }
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.config_paths = [
+            Path.home() / '.config' / 'opencode' / 'opencode.jsonc',
+            Path.home() / '.opencode' / 'opencode.jsonc',
+            Path.home() / '.config' / 'opencode' / 'config.json',
+        ]
+
+    def parse(self, config_path: Path) -> list[dict]:
+        projects = []
+        try:
+            # Reuse wizard's JSON5-safe loader (no external dependency).
+            from .wizard import _load_jsonc
+            data = _load_jsonc(config_path)
+        except Exception:
+            return projects
+
+        # OpenCode nests servers under `mcp`, not `mcpServers`.
+        mcp_servers = data.get('mcp', {})
+        for name, config in mcp_servers.items():
+            if name != 'codenexus' or not isinstance(config, dict):
+                continue
+            # `command` may be a string or a list.
+            raw_cmd = config.get('command', [])
+            args = raw_cmd if isinstance(raw_cmd, list) else [raw_cmd]
+            project_path = None
+            for i, arg in enumerate(args):
+                if arg == '-w' and i + 1 < len(args):
+                    project_path = args[i + 1]
+                    break
+            if project_path:
+                projects.append({'path': project_path, 'config': config})
+        return projects
+
+class AntigravityParser(AgentConfigParser):
+    """Parse Antigravity mcp_config.json for codenexus MCP server."""
+
+    def __init__(self):
+        super().__init__()
+        self.config_paths = [
+            Path.home() / '.gemini' / 'config' / 'mcp_config.json',
+            Path('.agents') / 'mcp_config.json',
+        ]
+
+    def parse(self, config_path: Path) -> list[dict]:
+        projects = []
+        try:
+            with open(config_path) as f:
+                data = json.load(f)
+        except (json.JSONDecodeError, FileNotFoundError, OSError):
+            return projects
+
+        mcp_servers = data.get('mcpServers', {})
+        for name, config in mcp_servers.items():
+            if name != 'codenexus':
+                continue
+            args = config.get('args', []) if isinstance(config, dict) else []
+            project_path = None
+            for i, arg in enumerate(args):
+                if arg == '-w' and i + 1 < len(args):
+                    project_path = args[i + 1]
+                    break
+            if project_path:
+                projects.append({'path': project_path, 'config': config})
+        return projects
+
 def get_all_indexed_projects() -> dict[str, list[dict]]:
     """Get indexed projects from all detected agents."""
     parsers = {
@@ -258,6 +338,8 @@ def get_all_indexed_projects() -> dict[str, list[dict]]:
         'Cursor': CursorParser(),
         'Codex': CodexParser(),
         'OpenClaw': OpenClawParser(),
+        'OpenCode': OpenCodeParser(),
+        'Antigravity': AntigravityParser(),
     }
 
     results = {}

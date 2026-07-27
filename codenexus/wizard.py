@@ -7,6 +7,73 @@ from enum import Enum
 from pathlib import Path
 
 
+def _load_jsonc(config_path: Path) -> dict:
+    """Parse a JSONC/JSON5 file (comments allowed) without external deps.
+
+    Handles ``//`` line comments and ``/* */`` block comments, which
+    OpenCode's ``opencode.jsonc`` may contain. Falls back to strict JSON
+    if the comment stripping is unsafe.
+    """
+    try:
+        text = config_path.read_text()
+    except OSError:
+        return {}
+
+    import re
+
+    # Strip block comments first.
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
+
+    # Strip // line comments (not inside strings).
+    def _strip_line_comments(src: str) -> str:
+        out = []
+        in_string = False
+        escape = False
+        i = 0
+        n = len(src)
+        while i < n:
+            ch = src[i]
+            if escape:
+                out.append(ch)
+                escape = False
+                i += 1
+                continue
+            if ch == "\\":
+                out.append(ch)
+                escape = True
+                i += 1
+                continue
+            if ch == '"':
+                in_string = not in_string
+                out.append(ch)
+                i += 1
+                continue
+            if not in_string and ch == "/" and i + 1 < n and src[i + 1] == "/":
+                # Skip to end of line (or end of text).
+                while i < n and src[i] != "\n":
+                    i += 1
+                # Keep the newline if present.
+                if i < n:
+                    out.append("\n")
+                    i += 1
+                continue
+            out.append(ch)
+            i += 1
+        return "".join(out)
+
+    cleaned = _strip_line_comments(text)
+
+    try:
+        return json.loads(cleaned) or {}
+    except json.JSONDecodeError:
+        # Trailing commas are valid JSON5 but not strict JSON; strip them.
+        try:
+            cleaned = re.sub(r",(\s*[}\]])", r"\1", cleaned)
+            return json.loads(cleaned) or {}
+        except json.JSONDecodeError:
+            return {}
+
+
 class AgentType(Enum):
     CLAUDE_CODE = "claude_code"
     OPENCLAW = "openclaw"
@@ -18,6 +85,8 @@ class AgentType(Enum):
     ZED = "zed"
     CONTINUE = "continue"
     AUGMENT = "augment"
+    OPENCODE = "opencode"
+    ANTIGRAVITY = "antigravity"
 
 
 @dataclass
@@ -110,6 +179,22 @@ AGENTS = {
         mcp_support=True,
         cli_command="auggie",
         description="AI-native coding platform by Augment Code",
+    ),
+    AgentType.OPENCODE: AgentInfo(
+        name="OpenCode",
+        agent_type=AgentType.OPENCODE,
+        config_file="~/.opencode/opencode.jsonc",
+        mcp_support=True,
+        cli_command="opencode mcp add",
+        description="Open-source AI coding agent (opencode.ai)",
+    ),
+    AgentType.ANTIGRAVITY: AgentInfo(
+        name="Antigravity",
+        agent_type=AgentType.ANTIGRAVITY,
+        config_file="~/.gemini/config/mcp_config.json",
+        mcp_support=True,
+        cli_command="",  # no CLI add subcommand; config is injected into mcp_config.json
+        description="Google Antigravity agentic IDE/CLI (agy)",
     ),
 }
 
@@ -283,6 +368,19 @@ class AgentWizard:
                 # Special handling for OpenClaw
                 if self._find_openclaw_path():
                     installed.append(agent_type)
+            elif agent_type == AgentType.OPENCODE:
+                # opencode: detect via install dir or config file
+                if (
+                    Path.home() / ".opencode" / "bin" / "opencode"
+                ).exists() or (Path.home() / ".opencode").exists() or Path(
+                    info.config_file
+                ).expanduser().exists():
+                    installed.append(agent_type)
+            elif agent_type == AgentType.ANTIGRAVITY:
+                # Antigravity CLI (`agy`); config lives under ~/.gemini
+                agy = Path.home() / ".local" / "bin" / "agy"
+                if agy.exists() or (Path.home() / ".gemini" / "antigravity-cli").exists():
+                    installed.append(agent_type)
             else:
                 config_path = Path(info.config_file).expanduser()
                 home = Path.home()
@@ -344,8 +442,6 @@ class AgentWizard:
             }
         elif agent_type in [AgentType.HERMES]:
             return {"mcp_servers": base_config}
-        elif agent_type in [AgentType.CURSOR, AgentType.WINDSURF]:
-            return {"mcpServers": base_config}
         elif agent_type == AgentType.CODEX:
             return {"mcp_servers": base_config}
         elif agent_type == AgentType.COPILOT:
@@ -354,12 +450,37 @@ class AgentWizard:
             return {"mcpServers": base_config}
         elif agent_type in [AgentType.ZED, AgentType.CONTINUE]:
             return {"mcpServers": base_config}
+        # Cursor, Windsurf, OpenCode, Antigravity all use the standard
+        # `mcpServers` key (OpenCode uses JSON5 .jsonc, Antigravity uses
+        # mcp_config.json — both parsed by the agent parsers).
+        elif agent_type in [AgentType.CURSOR, AgentType.WINDSURF, AgentType.ANTIGRAVITY]:
+            return {"mcpServers": base_config}
+        elif agent_type == AgentType.OPENCODE:
+            # OpenCode uses the key `mcp` (not `mcpServers`) and a `command`
+            # list plus a `type` field, written to opencode.jsonc (JSON5).
+            return {
+                "mcp": {
+                    "codenexus": {
+                        "type": "local",
+                        "command": ["codenexus", "-w", str(project_path), "serve"],
+                    }
+                }
+            }
         return {}
 
     def generate_cli_command(self, agent_type, project_path):
         info = self.get_agent_info(agent_type)
-        if not info or not info.cli_command:
-            return f"# {info.name} requires manual configuration"
+        if not info:
+            return "# Unknown agent"
+        # Agents without a CLI add subcommand must be configured via their
+        # config file; generate_mcp_config already produces the right block.
+        if not info.cli_command:
+            config = self.generate_mcp_config(agent_type, project_path)
+            return (
+                f"# {info.name} has no CLI 'mcp add' command.\n"
+                f"# Inject this into {info.config_file}:\n"
+                f"{json.dumps(config, indent=2)}"
+            )
         # Note: -w must come BEFORE serve command
         return f"{info.cli_command} codenexus -- codenexus -w {project_path} serve"
 
@@ -546,12 +667,12 @@ Use CodeNexus to search and analyze code in the workspace.
 
         # Guard against unsupported config file formats (e.g. .md) so we
         # never overwrite an unrelated file with JSON/MCP content.
-        supported = {".json", ".yaml", ".yml", ".toml"}
+        supported = {".json", ".jsonc", ".yaml", ".yml", ".toml"}
         if config_path.suffix not in supported:
             print(
                 f"[WARNING] {config_path} has an unsupported format "
                 f"({config_path.suffix or 'none'}). Skipping automatic write. "
-                f"Configure {info.name} manually with: {info.cli_command}"
+                f"Configure {info.name} manually with: {info.cli_command or 'its config file'}"
             )
             return False
 
@@ -559,6 +680,7 @@ Use CodeNexus to search and analyze code in the workspace.
         config_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Determine file format
+        is_jsonc = config_path.suffix == ".jsonc"
         is_yaml = config_path.suffix in [".yaml", ".yml"]
         is_toml = config_path.suffix == ".toml"
 
@@ -578,6 +700,8 @@ Use CodeNexus to search and analyze code in the workspace.
                         import tomli as tomllib
                     with open(config_path, "rb") as f:
                         existing_config = tomllib.load(f)
+                elif is_jsonc:
+                    existing_config = _load_jsonc(config_path)
                 else:
                     with open(config_path) as f:
                         existing_config = json.load(f)
