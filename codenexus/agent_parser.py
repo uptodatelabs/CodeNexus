@@ -351,11 +351,33 @@ def get_all_indexed_projects() -> dict[str, list[dict]]:
     return results
 
 def find_codenexus_index(project_path: str) -> Path | None:
-    """Find CodeNexus index for a project."""
-    path = Path(project_path)
-    index_path = path / '.codenexus' / 'index.db'
+    """Find the CodeNexus index (.codenexus/index.db) for a project path.
 
-    if index_path.exists():
-        return index_path
+    Handles two real-world cases where the agent config's ``-w`` path does
+    not exactly match the index root:
+
+    1. The path itself is the index root (``<path>/.codenexus/index.db``).
+    2. The path is an *ancestor* of the index root (e.g. config points at
+       ``/home/user`` but the index lives in ``/home/user/project/.codenexus``):
+       walk *down* one level to find the nearest index.
+
+    Deliberately does NOT walk *up* past the given path: doing so would reach
+    unrelated parent directories (e.g. the real user HOME) and match the wrong
+    index. Returns the ``index.db`` path, or ``None`` if no index is found.
+    """
+    path = Path(project_path).resolve()
+
+    # Case 1: exact index root.
+    direct = path / ".codenexus" / "index.db"
+    if direct.exists():
+        return direct
+
+    # Case 2: path is an ancestor of the index root — walk down one level.
+    # Only descend a single level to avoid scanning huge trees unexpectedly.
+    for sub in sorted(path.iterdir()) if path.is_dir() else []:
+        if sub.is_dir():
+            candidate = sub / ".codenexus" / "index.db"
+            if candidate.exists():
+                return candidate
 
     return None

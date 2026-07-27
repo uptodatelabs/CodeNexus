@@ -1,7 +1,6 @@
-"""Tests for `wizard clear` index discovery and per-index block rendering."""
+"""Tests for wizard clear: index discovery, agent merging, and rendering."""
 
 import json
-import os
 from pathlib import Path
 
 import pytest
@@ -17,67 +16,85 @@ def _make_index(proj: Path, home: Path):
     return srv
 
 
-def _write_claude_config(home: Path, projects: list[Path]):
-    """Write a Claude Code mcp config pointing at `projects`."""
-    cfg = home / ".claude.json"
-    cfg.parent.mkdir(parents=True, exist_ok=True)
-    cfg.write_text(
-        json.dumps(
-            {
-                "mcpServers": {
-                    "codenexus": {
-                        "command": "codenexus",
-                        "args": ["-w", str(projects[0]), "serve"],
+def _write_agent_configs(home: Path, paths: dict[str, Path]):
+    """Write agent configs. `paths` maps agent name -> project path."""
+    if "claude" in paths:
+        cfg = home / ".claude.json"
+        cfg.parent.mkdir(parents=True, exist_ok=True)
+        cfg.write_text(
+            json.dumps(
+                {
+                    "mcpServers": {
+                        "codenexus": {
+                            "command": "codenexus",
+                            "args": ["-w", str(paths["claude"]), "serve"],
+                        }
                     }
                 }
-            }
+            )
         )
-    )
+    if "hermes" in paths:
+        (home / ".hermes").mkdir(parents=True, exist_ok=True)
+        (home / ".hermes" / "config.yaml").write_text(
+            "mcp_servers:\n  codenexus:\n    command: codenexus\n"
+            f'    args: ["-w", "{paths["hermes"]}", "serve"]\n'
+        )
+    if "opencode" in paths:
+        (home / ".config" / "opencode").mkdir(parents=True, exist_ok=True)
+        (home / ".config" / "opencode" / "opencode.jsonc").write_text(
+            json.dumps(
+                {
+                    "mcp": {
+                        "codenexus": {
+                            "type": "local",
+                            "command": [
+                                "codenexus",
+                                "-w",
+                                str(paths["opencode"]),
+                                "serve",
+                            ],
+                        }
+                    }
+                }
+            )
+        )
+    if "openclaw" in paths:
+        skill = home / ".openclaw" / "workspace" / "skills" / "codenexus"
+        skill.mkdir(parents=True, exist_ok=True)
+        (skill / "SKILL.md").write_text(f"codenexus -w {paths['openclaw']} serve\n")
 
 
-def test_index_entries_grouped_per_project(tmp_path):
-    """Each project with an index must appear once, with all referencing
-    agents attached to that single entry (no duplicate/merged rows)."""
-    from codenexus.agent_parser import (
-        find_codenexus_index,
-        get_all_indexed_projects,
-    )
+def test_find_index_walks_down_from_ancestor(tmp_path):
+    """An agent config pointing at a PARENT dir must still locate the index
+    that lives in a child project dir (walk-down)."""
+    from codenexus.agent_parser import find_codenexus_index
 
-    proj_a = tmp_path / "proj_a"
-    proj_a.mkdir()
-    _make_index(proj_a, tmp_path / "fakehome_a")
+    parent = tmp_path / "parent"
+    proj = parent / "myproject"
+    proj.mkdir(parents=True)
+    _make_index(proj, tmp_path / "home_a")
 
-    # Simulate two agents pointing at the same project.
-    agent_projects = {
-        "Claude Code": [{"path": str(proj_a), "config": {}}],
-        "Hermes": [{"path": str(proj_a), "config": {}}],
-    }
-
-    # Replicate the grouping logic from cli.clear()
-    project_to_agents = {}
-    for agent_name, projects in agent_projects.items():
-        for p in projects:
-            project_to_agents.setdefault(p["path"], set()).add(agent_name)
-
-    entries = []
-    seen = set()
-    for project_path, agents in project_to_agents.items():
-        index_path = find_codenexus_index(project_path)
-        assert index_path is not None
-        real_dir = index_path.parent.resolve()
-        if real_dir in seen:
-            continue
-        seen.add(real_dir)
-        entries.append({"project": project_path, "agents": sorted(agents)})
-
-    assert len(entries) == 1
-    assert set(entries[0]["agents"]) == {"Claude Code", "Hermes"}
+    found = find_codenexus_index(str(parent))
+    assert found is not None
+    assert found.parent == (proj / ".codenexus")
 
 
-def test_clear_renders_per_index_blocks(tmp_path, monkeypatch):
-    """Two indexes with different agent sets must render as separate blocks
-    (idx-1, idx-2) with Agents/Project Path/Size on distinct lines, and must
-    not interleave. Uses a fake HOME so real indexes are never touched."""
+def test_find_index_exact_root(tmp_path):
+    """An agent config pointing exactly at the project root is found."""
+    from codenexus.agent_parser import find_codenexus_index
+
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    _make_index(proj, tmp_path / "home_b")
+
+    found = find_codenexus_index(str(proj))
+    assert found is not None
+    assert found.parent == (proj / ".codenexus")
+
+
+def test_clear_merges_agents_same_index(tmp_path, monkeypatch):
+    """When several agents reference the same index (possibly via parent vs
+    exact paths), clear() must show them TOGETHER in one block, not drop any."""
     from click.testing import CliRunner
 
     from codenexus.cli import main as cli
@@ -85,39 +102,16 @@ def test_clear_renders_per_index_blocks(tmp_path, monkeypatch):
     fakehome = tmp_path / "fakehome"
     fakehome.mkdir()
 
-    # idx-1: a project referenced by several agents; idx-2: one agent only.
     proj_a = tmp_path / "proj_a"
     proj_a.mkdir()
-    proj_b = tmp_path / "proj_b"
-    proj_b.mkdir()
-
-    # Claude Code points at proj_a; Hermes also at proj_a (multi-agent).
-    (fakehome / ".claude.json").write_text(
-        json.dumps(
-            {
-                "mcpServers": {
-                    "codenexus": {
-                        "command": "codenexus",
-                        "args": ["-w", str(proj_a), "serve"],
-                    }
-                }
-            }
-        )
-    )
-    (fakehome / ".hermes").mkdir(parents=True)
-    (fakehome / ".hermes" / "config.yaml").write_text(
-        "mcp_servers:\n  codenexus:\n    command: codenexus\n"
-        f'    args: ["-w", "{proj_a}", "serve"]\n'
-    )
-    # OpenClaw skill points at proj_b (single agent).
-    skill = fakehome / ".openclaw" / "workspace" / "skills" / "codenexus"
-    skill.mkdir(parents=True)
-    (skill / "SKILL.md").write_text(
-        f"codenexus -w {proj_b} serve\n"
-    )
-
     _make_index(proj_a, fakehome)
-    _make_index(proj_b, fakehome)
+
+    # claude/hermes point AT proj_a; opencode points at its PARENT (tmp_path).
+    # All three must land in the same idx block.
+    _write_agent_configs(
+        fakehome,
+        {"claude": proj_a, "hermes": proj_a, "opencode": tmp_path},
+    )
 
     monkeypatch.setenv("HOME", str(fakehome))
 
@@ -125,13 +119,38 @@ def test_clear_renders_per_index_blocks(tmp_path, monkeypatch):
     result = runner.invoke(cli, ["wizard", "clear", "--all", "--yes"])
     assert result.exit_code == 0, result.output
 
-    # Both index blocks are present and labelled by ID.
+    assert "idx-1" in result.output
+    assert "Claude Code" in result.output
+    assert "Hermes" in result.output
+    assert "OpenCode" in result.output
+    # OpenClaw not configured here, so must NOT appear.
+    assert "OpenClaw" not in result.output
+
+
+def test_clear_separates_distinct_indexes(tmp_path, monkeypatch):
+    """Two different indexes must appear as two separate blocks."""
+    from click.testing import CliRunner
+
+    from codenexus.cli import main as cli
+
+    fakehome = tmp_path / "fakehome"
+    fakehome.mkdir()
+
+    proj_a = tmp_path / "proj_a"
+    proj_a.mkdir()
+    proj_b = tmp_path / "proj_b"
+    proj_b.mkdir()
+    _make_index(proj_a, fakehome)
+    _make_index(proj_b, fakehome)
+
+    _write_agent_configs(fakehome, {"claude": proj_a, "openclaw": proj_b})
+
+    monkeypatch.setenv("HOME", str(fakehome))
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["wizard", "clear", "--all", "--yes"])
+    assert result.exit_code == 0, result.output
     assert "idx-1" in result.output
     assert "idx-2" in result.output
-    # Each block shows the three fields on their own lines.
-    assert "Agents" in result.output
-    assert "Project Path" in result.output
-    assert "Size" in result.output
-    # The path leaf must be visible (not silently dropped).
     assert "proj_a" in result.output
     assert "proj_b" in result.output

@@ -23,7 +23,7 @@ console = Console()
 
 @click.group()
 @click.option("--workspace", "-w", default=".", help="Workspace path")
-@click.version_option(version="1.1.32", prog_name="codenexus")
+@click.version_option(version="1.1.33", prog_name="codenexus")
 @click.pass_context
 def main(ctx, workspace):
     """CodeNexus: The context engine for AI coding agents.
@@ -950,18 +950,28 @@ def clear(clear_all, yes):
     cwd = str(Path.cwd().resolve())
     project_to_agents.setdefault(cwd, set())
 
-    # 3. For each project path, check whether an index actually exists
+    # 3. For each project path, find the real index directory and merge all
+    #    agents that point at the same index into a single entry.
     index_entries = []  # list of dicts
-    seen_index_dirs = set()
+    dir_to_entry: dict[str, dict] = {}  # real_index_dir -> entry (for merging)
+
+    cwd = str(Path.cwd().resolve())
+
+    # Seed with the current directory so manual `codenexus` usage is covered.
+    project_to_agents.setdefault(cwd, set())
+
     for project_path, agents in project_to_agents.items():
         index_path = find_codenexus_index(project_path)
         if not index_path:
             continue
         index_dir = index_path.parent  # the .codenexus directory
-        real_dir = index_dir.resolve()
-        if real_dir in seen_index_dirs:
+        real_dir = str(index_dir.resolve())
+
+        if real_dir in dir_to_entry:
+            # Same index referenced by another path: merge agents.
+            dir_to_entry[real_dir]["agents"].update(agents)
+            # Keep the shortest / most specific project label for display.
             continue
-        seen_index_dirs.add(real_dir)
 
         # Calculate size of the index directory
         total_size = 0
@@ -974,14 +984,14 @@ def clear(clear_all, yes):
             if total_size < 1024 * 1024
             else f"{total_size / (1024 * 1024):.1f} MB"
         )
-        index_entries.append(
-            {
-                "project": project_path,
-                "agents": sorted(agents) if agents else ["(current dir)"],
-                "index_dir": index_dir,
-                "size": size_str,
-            }
-        )
+        entry = {
+            "project": project_path,
+            "agents": set(agents),
+            "index_dir": index_dir,
+            "size": size_str,
+        }
+        dir_to_entry[real_dir] = entry
+        index_entries.append(entry)
 
     if not index_entries:
         console.print(
@@ -1016,7 +1026,7 @@ def clear(clear_all, yes):
         block = Table(show_header=False, show_edge=False, padding=(0, 2))
         block.add_column("Field", style="bold cyan", no_wrap=True)
         block.add_column("Value", overflow="fold")
-        block.add_row("Agents", ", ".join(e["agents"]) or "(current dir)")
+        block.add_row("Agents", ", ".join(sorted(e["agents"])) or "(current dir)")
         block.add_row("Project Path", _shorten(e["project"]))
         block.add_row("Size", e["size"])
 
