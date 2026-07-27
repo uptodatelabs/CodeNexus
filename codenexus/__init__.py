@@ -1,6 +1,6 @@
 """CodeNexus: The context engine for AI coding agents."""
 
-__version__ = "1.1.35"
+__version__ = "1.1.36"
 __author__ = "CodeNexus Contributors"
 
 from .graph import DependencyGraph, Edge, Node

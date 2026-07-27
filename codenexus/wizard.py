@@ -183,7 +183,7 @@ AGENTS = {
     AgentType.OPENCODE: AgentInfo(
         name="OpenCode",
         agent_type=AgentType.OPENCODE,
-        config_file="~/.opencode/opencode.jsonc",
+        config_file="~/.config/opencode/opencode.jsonc",
         mcp_support=True,
         cli_command="opencode mcp add",
         description="Open-source AI coding agent (opencode.ai)",

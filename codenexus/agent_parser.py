@@ -223,15 +223,12 @@ class OpenClawParser(AgentConfigParser):
 
     def __init__(self):
         super().__init__()
-        # OpenClaw stores skills under its workspace. The workspace can be
-        # declared in ~/.openclaw/openclaw.json ("workspace" key) or fall back
-        # to known default locations. Mirror wizard._find_openclaw_workspace()
-        # so the parser reads the SAME path the wizard writes to.
-        paths = [
-            Path.home() / '.openclaw' / 'workspace' / 'skills' / 'codenexus' / 'SKILL.md',
-            Path.home() / '.config' / 'openclaw' / 'workspace' / 'skills' / 'codenexus' / 'SKILL.md',
-            Path.home() / '.openclaw' / 'skills' / 'codenexus' / 'SKILL.md',
-        ]
+        # OpenClaw stores skills under its REAL workspace, declared in
+        # openclaw.json (agents.defaults.workspace). We must mirror wizard's
+        # lookup exactly and NOT fall back to the stale default path
+        # ~/.openclaw/workspace/skills, which may hold an outdated SKILL.md and
+        # cause the parser to read a different project than the wizard wrote.
+        paths = []
         ws = self._resolve_openclaw_workspace()
         if ws:
             paths.append(ws / 'skills' / 'codenexus' / 'SKILL.md')

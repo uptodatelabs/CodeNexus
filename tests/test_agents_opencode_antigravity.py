@@ -32,6 +32,9 @@ def test_opencode_in_registry():
     assert AgentType.OPENCODE in AGENTS
     assert AGENTS[AgentType.OPENCODE].mcp_support is True
     assert AGENTS[AgentType.OPENCODE].cli_command == "opencode mcp add"
+    # The config file MUST point at the real XDG location OpenCode actually
+    # reads/writes — not ~/.opencode/opencode.jsonc (which OpenCode ignores).
+    assert AGENTS[AgentType.OPENCODE].config_file == "~/.config/opencode/opencode.jsonc"
 
 
 def test_antigravity_in_registry():
@@ -143,8 +146,9 @@ def test_antigravity_parser_reads_real_config(tmp_path):
 
 def test_openclaw_parser_finds_nested_workspace_skill(tmp_path, monkeypatch):
     """OpenClaw's workspace is nested under agents.defaults.workspace in
-    openclaw.json. The parser must locate the SKILL.md there even though the
-    wizard writes to that same (non-default) path."""
+    openclaw.json. The parser must locate the SKILL.md there — and ONLY there,
+    not the stale default ~/.openclaw/workspace/skills path (which would cause
+    the parser to read a different project than the wizard wrote)."""
     import json
     from pathlib import Path
 
@@ -166,21 +170,28 @@ def test_openclaw_parser_finds_nested_workspace_skill(tmp_path, monkeypatch):
             }
         )
     )
+    # Stale default path with a DIFFERENT project — must be ignored.
+    stale = fake_home / ".openclaw" / "workspace" / "skills" / "codenexus" / "SKILL.md"
+    stale.parent.mkdir(parents=True)
+    stale.write_text("# stale\n\n- `codenexus index -w /home/rudylee/Github`\n")
+
     # Wizard-style skill location: <workspace>/skills/codenexus/SKILL.md
     skill = tmp_path / "ws" / "main" / "skills" / "codenexus" / "SKILL.md"
     skill.parent.mkdir(parents=True)
     skill.write_text(
-        "# CodeNexus\n\n- `codenexus index -w /home/rudylee/Github`\n"
+        "# CodeNexus\n\n- `codenexus index -w /home/rudylee/openclaw_workspace/projects`\n"
     )
 
     from codenexus.agent_parser import OpenClawParser
 
     parser = OpenClawParser()
-    # The resolved config_paths must include the nested workspace skill.
+    # The resolved config_paths must include the nested workspace skill...
     assert any(str(tmp_path / "ws" / "main" / "skills" / "codenexus" / "SKILL.md") in str(p) for p in parser.config_paths)
+    # ...and must NOT include the stale default path.
+    assert not any("workspace/skills/codenexus/SKILL.md" in str(p) for p in parser.config_paths)
     projects = parser.get_indexed_projects()
     assert len(projects) == 1
-    assert projects[0]["path"] == "/home/rudylee/Github"
+    assert projects[0]["path"] == "/home/rudylee/openclaw_workspace/projects"
 
 
 def test_get_all_indexed_projects_includes_new_agents(tmp_path):
