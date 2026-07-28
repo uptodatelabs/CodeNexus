@@ -58,6 +58,20 @@ def _write_agent_configs(home: Path, paths: dict[str, Path]):
                 }
             )
         )
+    if "antigravity" in paths:
+        (home / ".gemini" / "config").mkdir(parents=True, exist_ok=True)
+        (home / ".gemini" / "config" / "mcp_config.json").write_text(
+            json.dumps(
+                {
+                    "mcpServers": {
+                        "codenexus": {
+                            "command": "codenexus",
+                            "args": ["-w", str(paths["antigravity"]), "serve"],
+                        }
+                    }
+                }
+            )
+        )
     if "openclaw" in paths:
         skill = home / ".openclaw" / "workspace" / "skills" / "codenexus"
         skill.mkdir(parents=True, exist_ok=True)
@@ -187,3 +201,115 @@ def test_clear_separates_distinct_indexes(tmp_path, monkeypatch):
     assert "idx-2" in result.output
     assert "proj_a" in result.output
     assert "proj_b" in result.output
+
+
+def test_clear_all_five_agents_neutral_domains(tmp_path, monkeypatch):
+    """GENERIC verification (no trading/Github assumptions): five agents, each
+    pointing at a DIFFERENT project under neutral paths, must all appear as
+    separate blocks. Covers Flow1/2/3 in one scenario with non-code domains."""
+    from click.testing import CliRunner
+
+    from codenexus.cli import main as cli
+
+    fakehome = tmp_path / "fakehome"
+    fakehome.mkdir()
+
+    # Neutral, non-codebase project names (proves the tool is domain-agnostic).
+    projects = {
+        "novel": tmp_path / "my_novel",
+        "photos": tmp_path / "photo_lib",
+        "music": tmp_path / "track_repo",
+        "docs": tmp_path / "writing",
+        "data": tmp_path / "dataset",
+    }
+    for p in projects.values():
+        p.mkdir()
+        _make_index(p, fakehome)
+
+    _write_agent_configs(
+        fakehome,
+        {
+            "claude": projects["novel"],
+            "hermes": projects["photos"],
+            "opencode": projects["music"],
+            "antigravity": projects["docs"],
+            "openclaw": projects["data"],
+        },
+    )
+
+    monkeypatch.setenv("HOME", str(fakehome))
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["wizard", "clear", "--all", "--yes"])
+    assert result.exit_code == 0, result.output
+    # All five leaves present, one block each.
+    for name in ("my_novel", "photo_lib", "track_repo", "writing", "dataset"):
+        assert name in result.output, f"missing block for {name}"
+    # All five agent names present (no silent drop).
+    for name in ("Claude Code", "Hermes", "OpenCode", "Antigravity", "OpenClaw"):
+        assert name in result.output, f"missing agent {name}"
+
+
+def test_clear_parent_child_paths_neutral(tmp_path, monkeypatch):
+    """Flow3 (parent/child): an agent at a PARENT dir and another at its CHILD
+    must stay as two distinct blocks, not merged. Neutral paths."""
+    from click.testing import CliRunner
+
+    from codenexus.cli import main as cli
+
+    fakehome = tmp_path / "fakehome"
+    fakehome.mkdir()
+
+    parent = tmp_path / "workspace"
+    child = parent / "subproject"
+    child.mkdir(parents=True)
+    _make_index(parent, fakehome)
+    _make_index(child, fakehome)
+
+    _write_agent_configs(
+        fakehome,
+        {"claude": parent, "opencode": child},
+    )
+
+    monkeypatch.setenv("HOME", str(fakehome))
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["wizard", "clear", "--all", "--yes"])
+    assert result.exit_code == 0, result.output
+    assert "idx-1" in result.output
+    assert "idx-2" in result.output
+    # Parent and child must NOT be merged into one block.
+    assert "workspace" in result.output
+    assert "subproject" in result.output
+
+
+def test_clear_missing_config_file_no_crash(tmp_path, monkeypatch):
+    """Flow1 edge: one agent's config file is deleted entirely. The remaining
+    configured agents must still list, and no crash occurs."""
+    from click.testing import CliRunner
+
+    from codenexus.cli import main as cli
+
+    fakehome = tmp_path / "fakehome"
+    fakehome.mkdir()
+
+    proj_a = tmp_path / "proj_a"
+    proj_a.mkdir()
+    proj_b = tmp_path / "proj_b"
+    proj_b.mkdir()
+    _make_index(proj_a, fakehome)
+    _make_index(proj_b, fakehome)
+
+    # Only claude configured; hermes/opencode files absent.
+    _write_agent_configs(fakehome, {"claude": proj_a, "opencode": proj_b})
+
+    monkeypatch.setenv("HOME", str(fakehome))
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["wizard", "clear", "--all", "--yes"])
+    assert result.exit_code == 0, result.output
+    assert "Claude Code" in result.output
+    assert "OpenCode" in result.output
+    # No traceback / exception text leaked.
+    assert "Traceback" not in result.output
+    assert "Error" not in result.output
