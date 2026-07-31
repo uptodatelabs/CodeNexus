@@ -598,7 +598,7 @@ class AgentWizard:
             result = subprocess.run(
                 ["codenexus", "-w", str(project_path), "index"],
                 capture_output=True,
-                text=True,
+                encoding="utf-8",
                 timeout=120,
             )
             if result.returncode == 0:
