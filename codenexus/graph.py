@@ -412,6 +412,19 @@ class DependencyGraph:
             ).fetchall()
         return [self._node_from_row(row) for row in rows]
 
+    def get_file_nodes(self, file_path: str) -> list[Node]:
+        """Return every node recorded for a file, ordered by position."""
+        with self._lock:
+            rows = self.conn.execute(
+                f"""
+                SELECT {_node_select()} FROM nodes
+                WHERE file_path = ?
+                ORDER BY start_line ASC
+                """,
+                (file_path,),
+            ).fetchall()
+        return [self._node_from_row(row) for row in rows]
+
     def get_skeleton(self, node_id: str) -> str:
         node = self.get_node(node_id)
         if not node:

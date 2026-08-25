@@ -96,6 +96,22 @@ REGEX_PATTERNS = {
 }
 
 
+def detect_language(file_path: Path | str) -> str | None:
+    """Map a file extension to a supported language name."""
+    ext_map = {
+        ".py": "python",
+        ".js": "javascript",
+        ".jsx": "javascript",
+        ".ts": "typescript",
+        ".tsx": "typescript",
+        ".go": "go",
+        ".rs": "rust",
+        ".java": "java",
+        ".cs": "csharp",
+    }
+    return ext_map.get(Path(file_path).suffix.lower())
+
+
 class CodeParser:
     """Parse source code using tree-sitter with regex fallback."""
 
@@ -116,18 +132,7 @@ class CodeParser:
                 logger.debug("tree-sitter grammar unavailable for %s", lang)
 
     def _detect_language(self, file_path: Path) -> str | None:
-        ext_map = {
-            ".py": "python",
-            ".js": "javascript",
-            ".jsx": "javascript",
-            ".ts": "typescript",
-            ".tsx": "typescript",
-            ".go": "go",
-            ".rs": "rust",
-            ".java": "java",
-            ".cs": "csharp",
-        }
-        return ext_map.get(file_path.suffix.lower())
+        return detect_language(file_path)
 
     @staticmethod
     def _read_source(file_path: Path) -> tuple[bytes, str]:
