@@ -12,7 +12,8 @@ from mcp.types import TextContent, Tool
 
 from .graph import DependencyGraph, Edge, Node
 from .llm import LLMConfig, LocalLLM
-from .parser import CodeParser, create_capsule, detect_language
+from .parser import CodeParser, detect_language
+from .pipeline import build_query_capsule, build_task_capsule
 from .resolver import FileEntry, ImportResolver
 
 logger = logging.getLogger(__name__)
@@ -51,8 +52,6 @@ SOURCE_EXTENSIONS = (".py", ".js", ".jsx", ".ts", ".tsx", ".go", ".rs", ".java",
 # Bumped when indexing output format changes so existing caches invalidate
 # and files get re-indexed under the new scheme once.
 CACHE_VERSION = "v2"
-
-_PRESET_LIMITS = {"explore": 15, "debug": 10, "modify": 10}
 
 
 class CodeNexusServer:
@@ -190,68 +189,12 @@ class CodeNexusServer:
         if not task:
             raise ValueError("run_pipeline requires a non-empty 'task'")
         max_tokens = int(args.get("max_tokens") or 8000)
-        preset = str(args.get("preset", "auto"))
+        preset = args.get("preset", "auto")
 
-        # Extract keywords from task (drop common stop words that would match
-        # nearly every node and drown the ranking).
-        stop_words = {
-            "the", "a", "an", "to", "for", "of", "in", "on", "and", "or",
-            "fix", "add", "make", "please", "should", "with", "that", "this",
-        }
-        keywords = [w for w in task.lower().split() if w not in stop_words] or task.lower().split()
-
-        # Search for relevant nodes using multiple queries
-        nodes = []
-        seen_ids = set()
-
-        for keyword in keywords:
-            results = self.graph.search_nodes(keyword, limit=10)
-            for node in results:
-                if node.id not in seen_ids:
-                    nodes.append(node)
-                    seen_ids.add(node.id)
-
-        # Sort by relevance (simple heuristic: more keywords matched = higher rank)
-        def relevance_score(node):
-            score = 0
-            text = f"{node.name} {node.content} {node.signature}".lower()
-            for keyword in keywords:
-                if keyword in text:
-                    score += 1
-            return score
-
-        nodes.sort(key=relevance_score, reverse=True)
-        # Presets tune how wide the capsule reaches; "auto" keeps the default.
-        limit = _PRESET_LIMITS.get(preset, 20)
-        if preset not in ("auto", "explore", "debug", "modify"):
-            logger.debug("Unknown preset %r; using default width", preset)
-        nodes = nodes[:limit]
-
-        # Build capsule
-        result = {"task": task, "pivot_files": [], "skeletons": [], "token_estimate": 0}
-
-        tokens_used = 0
-        for node in nodes:
-            if tokens_used >= max_tokens:
-                break
-
-            # Get full content for top nodes, skeleton for rest
-            full_content = node.content
-            skeleton = node.signature + "\n..."
-
-            if tokens_used + len(full_content.split()) * 1.3 < max_tokens * 0.6:
-                result["pivot_files"].append(
-                    {"path": node.file_path, "name": node.name, "content": full_content}
-                )
-                tokens_used += len(full_content.split()) * 1.3
-            else:
-                result["skeletons"].append(
-                    {"path": node.file_path, "name": node.name, "skeleton": skeleton}
-                )
-                tokens_used += len(skeleton.split()) * 1.3
-
-        result["token_estimate"] = int(tokens_used)
-
+        result = build_task_capsule(
+            self.graph, task, preset=preset if isinstance(preset, str) else "auto",
+            max_tokens=max_tokens,
+        )
         return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
     async def _get_context_capsule(self, args: dict) -> list[TextContent]:
@@ -261,21 +204,8 @@ class CodeNexusServer:
             raise ValueError("get_context_capsule requires a non-empty 'query'")
         max_tokens = int(args.get("max_tokens") or 8000)
 
-        nodes = self.graph.search_nodes(query, limit=10)
-
-        capsule_parts = []
-        tokens_used = 0
-
-        for node in nodes:
-            if tokens_used >= max_tokens:
-                break
-
-            # Create skeleton
-            skeleton = create_capsule(node.content)
-            capsule_parts.append(f"=== {node.file_path}::{node.name} ===\n{skeleton}")
-            tokens_used += len(skeleton.split()) * 1.3
-
-        return [TextContent(type="text", text="\n\n".join(capsule_parts))]
+        result = build_query_capsule(self.graph, query, max_tokens=max_tokens)
+        return [TextContent(type="text", text=result["capsule"])]
 
     async def _get_skeleton(self, args: dict) -> list[TextContent]:
         """Get file skeleton."""
