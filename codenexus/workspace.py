@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .graph import DependencyGraph
+from .license import get_license
 from .parser import CodeParser, detect_language
 from .resolver import FileEntry, ImportResolver
 from .server import SKIP_DIRS, SOURCE_EXTENSIONS
@@ -145,8 +146,6 @@ class MultiRepoWorkspace:
                 return False
 
         # Enforce tier limit on repository count
-        from .license import get_license
-
         max_repos = get_license().get_limit("max_repos")
         if isinstance(max_repos, int) and len(self.config.repos) >= max_repos:
             logger.error(
