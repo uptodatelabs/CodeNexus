@@ -490,6 +490,11 @@ class CodeNexusServer:
         known_ids = {
             row[0] for row in self.graph.conn.execute("SELECT id FROM nodes")
         }
+        # Pass 1 — nodes only. Edges are inserted in pass 2 AFTER every file's
+        # symbols exist: filtering during streaming made acceptance depend on
+        # ThreadPoolExecutor completion order (a call into a not-yet-inserted
+        # file was dropped on some runs, kept on others).
+        pending_edges = []
         for file_path, nodes, edges in parse_results:
             for node in nodes:
                 if node_cap is not None and total_nodes >= node_cap:
@@ -498,16 +503,18 @@ class CodeNexusServer:
                 self.graph.add_node(node)
                 known_ids.add(node.id)
                 total_nodes += 1
-            else:
-                for edge in edges:
-                    if edge.source_id.endswith("::import"):
-                        # Pseudo-source edges are rewritten into real
-                        # module/symbol edges by the resolver below.
-                        continue
-                    if edge.source_id in known_ids and edge.target_id in known_ids:
-                        self.graph.add_edge(edge)
+            pending_edges.extend(edges)
             # Track indexed file in session memory.
             self._record_file_change(str(file_path), "index", len(nodes))
+
+        # Pass 2 — edges whose endpoints exist anywhere in the graph.
+        for edge in pending_edges:
+            if edge.source_id.endswith("::import"):
+                # Pseudo-source edges are rewritten into real module/symbol
+                # edges by the resolver below.
+                continue
+            if edge.source_id in known_ids and edge.target_id in known_ids:
+                self.graph.add_edge(edge)
 
         # Resolve imports into real edges between module/symbol nodes so
         # PageRank, impact analysis and dependents queries operate on a

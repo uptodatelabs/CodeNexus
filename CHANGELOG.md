@@ -1,3 +1,13 @@
+## [1.2.4] - 2026-08-26
+
+### Fixed
+- Edge insertion is now order-independent: nodes are committed for all files
+  before any non-import edge is validated/inserted. Previously acceptance of
+  cross-file call/import-resolved edges depended on ThreadPoolExecutor
+  completion order, making indexing results (and the release test job)
+  flaky. Two-pass insert in both indexers; stress regression test added.
+(v1.2.3 was blocked at the release gate for this same flake.)
+
 ## [1.2.3] - 2026-08-26
 
 ### Fixed

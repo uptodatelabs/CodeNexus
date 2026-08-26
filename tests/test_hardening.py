@@ -9,6 +9,7 @@ and wizard config-write safety.
 
 import json
 from datetime import datetime
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -513,3 +514,33 @@ def test_indexing_survives_unresolved_calls_and_keeps_real_ones(temp_dir):
     impact = srv.graph.get_impact_graph("save", depth=2)
     assert impact["total"] >= 1  # save is reachable from create_user
     srv.graph.close()
+
+
+def test_call_edges_order_independent_across_runs():
+    """Edge acceptance must not depend on thread completion order."""
+    import tempfile as _tf
+
+    from codenexus.server import CodeNexusServer
+
+    observed = set()
+    for _ in range(5):
+        root = Path(_tf.mkdtemp())
+        (root / "a_models.py").write_text(
+            "class User:\n    def save(self):\n        return 1\n", encoding="utf-8"
+        )
+        (root / "b_service.py").write_text(
+            "from a_models import User\n"
+            "def create():\n"
+            "    u = User()\n"
+            "    u.save()\n"
+            "    return u\n",
+            encoding="utf-8",
+        )
+        srv = CodeNexusServer(root)
+        srv.index_workspace(incremental=True)
+        calls = srv.graph.conn.execute(
+            "SELECT source_id, target_id FROM edges WHERE edge_type='calls'"
+        ).fetchall()
+        observed.add(frozenset(calls))
+        srv.graph.close()
+    assert len(observed) == 1, f"call edges vary between runs: {observed}"

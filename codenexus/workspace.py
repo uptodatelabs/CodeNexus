@@ -259,6 +259,7 @@ class MultiRepoWorkspace:
 
         # Parse and index
         known_ids = {row[0] for row in graph.conn.execute("SELECT id FROM nodes")}
+        pending_edges: list = []
         entries: list[FileEntry] = []
         indexed = 0
         for file_path in source_files:
@@ -286,8 +287,7 @@ class MultiRepoWorkspace:
                         continue  # rewritten by the resolver below
                     edge.source_id = f"{alias}:{edge.source_id}"
                     edge.target_id = f"{alias}:{edge.target_id}"
-                    if edge.source_id in known_ids and edge.target_id in known_ids:
-                        graph.add_edge(edge)
+                    pending_edges.append(edge)
                 entries.append(
                     FileEntry(
                         abs_path=file_path,
@@ -313,6 +313,11 @@ class MultiRepoWorkspace:
                 edge.target_id = f"{alias}:{edge.target_id}"
             graph.add_nodes(module_nodes)
             graph.add_edges(import_edges)
+
+        # Insert non-import edges once ALL files' nodes exist (order-safe).
+        for edge in pending_edges:
+            if edge.source_id in known_ids and edge.target_id in known_ids:
+                graph.add_edge(edge)
 
         # Compute centrality
         if indexed > 0:
