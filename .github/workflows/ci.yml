@@ -31,11 +31,13 @@ jobs:
       run: ruff check codenexus/ tests/
 
     - name: Test (pytest)
+      shell: bash
       run: |
+        set -o pipefail
         pytest tests/ --tb=long -ra -q --junitxml=results.xml > pytest-stdout.log 2>&1
-        $code = $LASTEXITCODE
-        Get-Content pytest-stdout.log -Tail 60
-        "exit_code=$code" | Out-File pytest-exit.txt
+        code=$?
+        tail -n 60 pytest-stdout.log || true
+        echo "exit_code=$code" >> pytest-stdout.log
         exit $code
 
     - name: Report results to job summary
