@@ -263,7 +263,7 @@ def test_dispatch_unknown_tool_raises_not_success(temp_dir):
     from codenexus.server import CodeNexusServer
 
     srv = CodeNexusServer(temp_dir)
-    with pytest.raises(Exception):
+    with pytest.raises((ValueError, RuntimeError)):
         asyncio.run(srv.dispatch_tool("definitely_not_a_tool", {}))
 
 

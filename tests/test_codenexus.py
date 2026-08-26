@@ -21,13 +21,13 @@ def temp_dir():
         for f in dir_path.rglob("*.db"):
             try:
                 os.chmod(f, 0o777)
-            except:
+            except OSError:
                 pass
-    except:
+    except Exception:
         pass
     try:
         shutil.rmtree(dir_path, ignore_errors=True)
-    except:
+    except Exception:
         pass
 
 @pytest.fixture
@@ -423,7 +423,7 @@ def test_get_all_indexed_projects_includes_openclaw(tmp_path, monkeypatch):
     for cls in (ap.ClaudeCodeParser, ap.HermesParser, ap.CursorParser, ap.CodexParser):
         inst = cls()
         inst.config_paths = [tmp_path / "nonexistent"]
-        monkeypatch.setattr(ap, cls.__name__, lambda: inst)
+        monkeypatch.setattr(ap, cls.__name__, lambda c=inst: c)  # noqa: B023
 
     results = ap.get_all_indexed_projects()
     assert "OpenClaw" in results
