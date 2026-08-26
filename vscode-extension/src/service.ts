@@ -19,6 +19,7 @@ export interface StatusInfo {
 export class CodeNexusService {
     private process: ChildProcess | null = null;
     private outputChannel: vscode.OutputChannel;
+    private reindexTimer: NodeJS.Timeout | null = null;
 
     constructor() {
         this.outputChannel = vscode.window.createOutputChannel('CodeNexus');
@@ -29,6 +30,25 @@ export class CodeNexusService {
         return extensions.some(ext => fileName.endsWith(ext));
     }
 
+    /**
+     * Spawn codenexus with safely quoted arguments.
+     * shell:true is required to resolve the pip-installed launcher on
+     * Windows, so every argument must be quoted explicitly.
+     */
+    private spawnCli(args: string[], cwd: string, onDone: (code: number | null, stdout: string) => void): void {
+        const quoted = args.map(a => (/^[\w.,:/\\-]+$/.test(a) ? a : `"${a.replace(/"/g, '\\"')}"`));
+        const child = spawn('codenexus', quoted, { cwd, shell: true });
+
+        let stdout = '';
+        child.stdout?.on('data', d => { stdout += d.toString(); });
+        child.stderr?.on('data', d => { this.outputChannel.append(d.toString()); });
+        child.on('close', code => onDone(code, stdout));
+        child.on('error', err => {
+            this.outputChannel.appendLine(`codenexus not found: ${err.message}`);
+            onDone(-1, '');
+        });
+    }
+
     async indexWorkspace(): Promise<void> {
         const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
         if (!workspaceFolder) {
@@ -37,21 +57,7 @@ export class CodeNexusService {
         }
 
         return new Promise((resolve, reject) => {
-            const process = spawn('codenexus', ['index'], {
-                cwd: workspaceFolder.uri.fsPath,
-                shell: true
-            });
-
-            let output = '';
-            process.stdout?.on('data', (data) => {
-                output += data.toString();
-            });
-
-            process.stderr?.on('data', (data) => {
-                output += data.toString();
-            });
-
-            process.on('close', (code) => {
+            this.spawnCli(['index'], workspaceFolder.uri.fsPath, (code, output) => {
                 this.outputChannel.appendLine(output);
                 if (code === 0) {
                     resolve();
@@ -62,9 +68,19 @@ export class CodeNexusService {
         });
     }
 
-    async indexFile(filePath: string): Promise<void> {
-        // Simplified file indexing
-        this.outputChannel.appendLine(`Indexing file: ${filePath}`);
+    /**
+     * Debounced incremental re-index on save. The CLI has no single-file
+     * mode; scheduling a full (cache-aware) run avoids a process per save.
+     */
+    scheduleReindex(): void {
+        if (this.reindexTimer) {
+            clearTimeout(this.reindexTimer);
+        }
+        this.reindexTimer = setTimeout(() => {
+            this.indexWorkspace()
+                .then(() => this.outputChannel.appendLine('Auto re-index complete'))
+                .catch(() => this.outputChannel.appendLine('Auto re-index failed'));
+        }, 2000);
     }
 
     async search(query: string): Promise<SearchResult[]> {
@@ -74,27 +90,12 @@ export class CodeNexusService {
         }
 
         return new Promise((resolve) => {
-            const process = spawn('codenexus', ['search', query, '--json'], {
-                cwd: workspaceFolder.uri.fsPath,
-                shell: true
-            });
-
-            let output = '';
-            process.stdout?.on('data', (data) => {
-                output += data.toString();
-            });
-
-            process.on('close', () => {
+            this.spawnCli(['search', query, '--json'], workspaceFolder.uri.fsPath, (_code, stdout) => {
                 try {
-                    const results = JSON.parse(output);
-                    resolve(results);
+                    resolve(JSON.parse(stdout));
                 } catch {
                     resolve([]);
                 }
-            });
-
-            process.on('error', () => {
-                resolve([]);
             });
         });
     }
@@ -106,27 +107,12 @@ export class CodeNexusService {
         }
 
         return new Promise((resolve) => {
-            const process = spawn('codenexus', ['status', '--json'], {
-                cwd: workspaceFolder.uri.fsPath,
-                shell: true
-            });
-
-            let output = '';
-            process.stdout?.on('data', (data) => {
-                output += data.toString();
-            });
-
-            process.on('close', () => {
+            this.spawnCli(['status', '--json'], workspaceFolder.uri.fsPath, (_code, stdout) => {
                 try {
-                    const status = JSON.parse(output);
-                    resolve(status);
+                    resolve(JSON.parse(stdout));
                 } catch {
                     resolve({ nodes: 0, edges: 0, files: 0 });
                 }
-            });
-
-            process.on('error', () => {
-                resolve({ nodes: 0, edges: 0, files: 0 });
             });
         });
     }
@@ -138,18 +124,7 @@ export class CodeNexusService {
         }
 
         return new Promise((resolve) => {
-            const process = spawn('codenexus', ['clear'], {
-                cwd: workspaceFolder.uri.fsPath,
-                shell: true
-            });
-
-            process.on('close', () => {
-                resolve();
-            });
-
-            process.on('error', () => {
-                resolve();
-            });
+            this.spawnCli(['clear'], workspaceFolder.uri.fsPath, () => resolve());
         });
     }
 }

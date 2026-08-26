@@ -27,12 +27,6 @@ export class CodeNexusCodeLensProvider implements vscode.CodeLensProvider {
                 command: "codenexus.search",
                 arguments: [match[1]]
             }));
-
-            lenses.push(new vscode.CodeLens(range, {
-                title: "$(graph) Impact",
-                command: "codenexus.search",
-                arguments: [`impact:${match[1]}`]
-            }));
         }
 
         // Class lenses
@@ -44,18 +38,6 @@ export class CodeNexusCodeLensProvider implements vscode.CodeLensProvider {
                 title: "$(search) Find Usages",
                 command: "codenexus.search",
                 arguments: [match[1]]
-            }));
-
-            lenses.push(new vscode.CodeLens(range, {
-                title: "$(graph) Impact",
-                command: "codenexus.search",
-                arguments: [`impact:${match[1]}`]
-            }));
-
-            lenses.push(new vscode.CodeLens(range, {
-                title: "$(info) Dependencies",
-                command: "codenexus.search",
-                arguments: [`deps:${match[1]}`]
             }));
         }
 

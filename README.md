@@ -221,6 +221,12 @@ claude
 | Java | ✅ Full support |
 | C# | ✅ Full support |
 
+> **Tip:** Install the parsing extras for AST-accurate indexing:
+> `pip install "codenexus-ai[full]"`. Without it CodeNexus falls back to a
+> built-in regex scanner (works for all languages above, but coarser).
+> Import-graph resolution, PageRank ranking and impact analysis work in both
+> modes.
+
 ---
 
 ## Other AI Agent Integration
@@ -401,11 +407,13 @@ codenexus wizard interactive
 
 ## Roadmap
 
-- [ ] Tree-sitter integration for better parsing
-- [ ] Graph centrality (PageRank) for better ranking
-- [ ] Local LLM support for additional savings
-- [ ] Multi-repo workspace support
-- [ ] VS Code extension
+- [x] Tree-sitter integration for better parsing (`pip install "codenexus-ai[full]"`)
+- [x] Graph centrality (PageRank) for better ranking
+- [x] Local LLM support for additional savings
+- [x] Multi-repo workspace support
+- [x] VS Code extension
+- [ ] Function-level call-graph extraction (currently import/module level)
+- [ ] Signed license keys
 
 ---
 

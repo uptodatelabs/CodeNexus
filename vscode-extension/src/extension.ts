@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { CodeNexusSidebarProvider } from './sidebar';
 import { CodeNexusCodeLensProvider } from './codelens';
 import { CodeNexusService } from './service';
@@ -51,9 +52,16 @@ export function activate(context: vscode.ExtensionContext) {
                     placeHolder: 'Select a result'
                 });
 
-                if (selected) {
-                    // Open the file
-                    const uri = vscode.Uri.file(selected.description);
+                if (selected && selected.description) {
+                    // Result paths may be absolute or workspace-relative.
+                    let filePath = selected.description;
+                    if (!path.isAbsolute(filePath)) {
+                        const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+                        if (root) {
+                            filePath = path.join(root, filePath);
+                        }
+                    }
+                    const uri = vscode.Uri.file(filePath);
                     const document = await vscode.workspace.openTextDocument(uri);
                     await vscode.window.showTextDocument(document);
                 }
@@ -77,12 +85,13 @@ export function activate(context: vscode.ExtensionContext) {
         })
     );
 
-    // Auto-index on file save
+    // Auto-index on file save (debounced full run; the CLI has no
+    // single-file mode)
     if (vscode.workspace.getConfiguration('codenexus').get('autoIndex')) {
         context.subscriptions.push(
-            vscode.workspace.onDidSaveTextDocument(async (document) => {
+            vscode.workspace.onDidSaveTextDocument((document) => {
                 if (service.isSupportedFile(document.fileName)) {
-                    await service.indexFile(document.fileName);
+                    service.scheduleReindex();
                 }
             })
         );

@@ -423,13 +423,14 @@ codenexus wizard clear
 ## 로드맵
 
 - [x] 기본 의존성 그래프
-- [x] PageRank 중앙성
+- [x] PageRank 중앙성 (import 그래프 기반, 실노드 간 엣지)
 - [x] 병렬 인덱싱
 - [x] 증분 인덱싱
-- [ ] Tree-sitter 통합 (진행 중)
-- [ ] 로컬 LLM 지원
-- [ ] 멀티 레포 워크스페이스
-- [ ] VS Code 확장
+- [x] Tree-sitter 통합 (`pip install "codenexus-ai[full]"`)
+- [x] 로컬 LLM 지원
+- [x] 멀티 레포 워크스페이스
+- [x] VS Code 확장
+- [ ] 함수 수준 콜그래프 추출 (현재 import/모듈 수준)
 
 ---
 
