@@ -6,7 +6,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![PyPI](https://img.shields.io/pypi/v/codenexus-ai.svg)](https://pypi.org/project/codenexus-ai/)
 
-[English](README.md) | [한국어](README.ko.md)
+**English** | [한국어](#korean)
 
 ---
 
@@ -338,7 +338,6 @@ mcp_servers:
 ```
 
 **3. Usage in Hermes:**
-**3. Usage in Hermes:**
 ```bash
 /hermes search "authentication middleware"
 /hermes pipeline "fix login bug"
@@ -523,7 +522,8 @@ codenexus wizard interactive
 - [x] Graph centrality (PageRank) for better ranking
 - [x] Local LLM support for additional savings
 - [x] Multi-repo workspace support
-- [ ] VS Code extension
+- [x] VS Code extension
+- [ ] Function-level call-graph extraction beyond imports (in progress)
 
 ---
 
@@ -589,3 +589,625 @@ If you find CodeNexus useful, consider supporting the project:
 ---
 
 **Connect your code. Empower your AI.**
+
+<!-- Korean documentation follows -->
+<a id="korean"></a>
+
+---
+
+# CodeNexus AI — 한국어 문서
+
+**AI 코딩 에이전트를 위한 컨텍스트 엔진**
+
+[English](#what-is-codenexus) | **한국어**
+
+---
+
+## CodeNexus란?
+
+CodeNexus는 **로컬 우선 컨텍스트 엔진**으로, AI 코딩 에이전트가 코드베이스를 더 잘 이해하도록 돕습니다. 코드의 실시간 의존성 그래프를 구축하고, AI 에이전트에 관련된 컨텍스트만 제공하여 토큰 사용량을 **최대 약 99%**(실측값) 절감하면서 코드 품질을 향상시킵니다.
+
+### 주요 기능
+
+- **로컬 우선**: 코드가 기계를 벗어나지 않음
+- **토큰 절감**: AI 컨텍스트 토큰을 최대 약 99%까지 감축 (실측정: 211개 파일 프로젝트에서 작업당 951K → 약 4.3K)
+- **멀티 언어**: Python, JavaScript, TypeScript, Go, Rust, Java, C# (7개 언어)
+- **MCP 호환**: 공식 `mcp` Python SDK 기반 (표준 `Content-Length` 프레임 stdio). Hermes, Claude Code, Cursor, Windsurf, Zed, Continue.dev, GitHub Copilot, Codex, Augment, OpenCode, Antigravity 및 모든 spec 준수 MCP 클라이언트와 연동
+- **빠른 인덱싱**: SQLite 기반 의존성 그래프
+- **PageRank**: 중요도 기반 스마트 랭킹 (import 그래프 기반, 실노드 간 엣지)
+
+---
+
+## 빠른 시작
+
+### 설치
+
+```bash
+pip install codenexus-ai
+```
+
+**소스에서 개발하는 경우(로컬 수정 시 권장):** 저장소 내용이 바로 반영되도록
+editable 모드로 설치하세요. 일반 `pip install .`은 코드를 `site-packages`로
+복사하므로, 이후 파일을 수정해도 이전 복사본이 실행됩니다.
+
+```bash
+git clone https://github.com/uptodatelabs/CodeNexus.git
+cd CodeNexus
+pip install -e .
+```
+
+### 기본 사용법
+
+```bash
+# 프로젝트 인덱싱
+codenexus index
+
+# 컨텍스트 검색
+codenexus search "인증 미들웨어"
+
+# 컨텍스트 파이프라인 실행
+codenexus pipeline "로그인 버그 수정"
+
+# 상태 확인
+codenexus status
+
+# 상위 노드 보기
+codenexus top
+
+# 임팩트 분석
+codenexus impact "main"
+```
+
+---
+
+## 작동 방식
+
+```
+코드베이스
+     ↓
+[CodeNexus 인덱서]
+     ↓
+┌─────────────────────────────────────┐
+│  의존성 그래프 (SQLite + FTS5)      │
+│  - 함수, 클래스, 임포트             │
+│  - 호출 관계                        │
+│  - 타입 정보                        │
+│  - PageRank 중앙성                  │
+└─────────────────────────────────────┘
+     ↓
+[컨텍스트 캡슐 생성기]
+     ↓
+┌─────────────────────────────────────┐
+│  AI 에이전트를 위한 최적화된 컨텍스트│
+│  - 피봇 파일: 전체 소스             │
+│  - 지원 파일: 스켈리톤만            │
+│  - 토큰 예산: 준수                  │
+└─────────────────────────────────────┘
+     ↓
+AI 에이전트 (Claude Code, Cursor 등)
+```
+
+---
+
+## Claude Code 연동
+
+CodeNexus는 Claude Code와 연동하여 AI 코딩 에이전트의 토큰 사용량을 줄입니다.
+
+### 설정 방법
+
+#### 1. CodeNexus 설치
+
+```bash
+pip install codenexus-ai
+```
+
+#### 2. `.claude.json` 파일 편집
+
+**파일 위치:**
+- macOS/Linux: `~/.claude.json`
+- Windows: `C:\Users\사용자이름\.claude.json`
+
+#### 3. 설정 추가
+
+`~/.claude.json` 파일에 다음 내용을 추가하세요:
+
+```json
+{
+  "mcpServers": {
+    "codenexus": {
+      "command": "codenexus",
+      "args": ["-w", "여기에_프로젝트_경로", "serve"]
+    }
+  }
+}
+```
+
+**⚠️ 중요: `여기에_프로젝트_경로`는 CodeNexus를 사용할 프로젝트의 경로입니다.**
+
+### 경로 설정 예시
+
+**❌ 잘못된 예시:**
+```json
+"args": ["-w", "C:\\Users\\username\\.codenexus", "serve"]
+```
+→ CodeNexus 설정 디렉토리 (오류)
+
+**✅ 올바른 예시:**
+```json
+"args": ["-w", "C:\\Users\\username\\projects\\my-app", "serve"]
+```
+→ CodeNexus를 사용할 프로젝트 디렉토리
+
+### OS별 경로 예시
+
+**Windows:**
+```json
+{
+  "mcpServers": {
+    "codenexus": {
+      "command": "codenexus",
+      "args": ["-w", "C:\\Users\\username\\projects\\my-app", "serve"]
+    }
+  }
+}
+```
+
+**macOS/Linux:**
+```json
+{
+  "mcpServers": {
+    "codenexus": {
+      "command": "codenexus",
+      "args": ["-w", "/home/username/projects/my-app", "serve"]
+    }
+  }
+}
+```
+
+### 여러 프로젝트 설정
+
+여러 프로젝트에서 CodeNexus를 사용하려면, 각 프로젝트별로 설정을 추가하세요:
+
+```json
+{
+  "projects": {
+    "C:\\Users\\username\\projects\\app1": {
+      "mcpServers": {
+        "codenexus": {
+          "command": "codenexus",
+          "args": ["-w", "C:\\Users\\username\\projects\\app1", "serve"]
+        }
+      }
+    },
+    "C:\\Users\\username\\projects\\app2": {
+      "mcpServers": {
+        "codenexus": {
+          "command": "codenexus",
+          "args": ["-w", "C:\\Users\\username\\projects\\app2", "serve"]
+        }
+      }
+    }
+  }
+}
+```
+
+### 설정 확인
+
+1. `.claude.json` 파일 저장
+2. Claude Code 재시작
+3. CodeNexus를 사용할 프로젝트 디렉토리에서 Claude 실행
+
+```bash
+cd C:\Users\username\projects\my-app
+claude
+```
+
+### 문제 해결
+
+**MCP 서버가 연결되지 않는 경우:**
+
+CodeNexus는 **표준 MCP stdio 프로토콜**(공식 `mcp` Python SDK 기반, `Content-Length` 프레임 JSON-RPC)을 사용하므로, spec을 준수하는 모든 클라이언트(Hermes, Claude Code, Cursor, Windsurf, Zed, Continue.dev, GitHub Copilot, Codex, Augment)와 즉시 연결됩니다.
+
+1. CodeNexus가 설치되어 있는지 확인:
+   ```bash
+   pip show codenexus-ai
+   ```
+
+2. 코드 실행 테스트:
+   ```bash
+   codenexus --version
+   ```
+
+3. 경로가 올바른지 확인 (따옴표 주의)
+
+---
+
+## 지원 언어
+
+| 언어 | 상태 |
+|------|------|
+| Python | ✅ 완전 지원 |
+| JavaScript | ✅ 완전 지원 |
+| TypeScript | ✅ 완전 지원 |
+| Go | ✅ 완전 지원 |
+| Rust | ✅ 완전 지원 |
+| Java | ✅ 완전 지원 |
+| C# | ✅ 완전 지원 |
+
+> AST 정밀 인덱싱을 위해 파싱 extras 설치를 권장합니다:
+> `pip install "codenexus-ai[full]"`. 없으면 내장 regex 스캐너로 폴백합니다.
+> import 그래프 해석·PageRank 랭킹·임팩트 분석은 두 모드 모두에서 동작합니다.
+
+---
+
+## 지원 AI 에이전트
+
+CodeNexus는 MCP(MCP 미지원 에이전트는 스킬)로 AI 코딩 에이전트와 연동됩니다.
+설정 마법사가 설치된 에이전트를 자동 감지하고 각각 올바른 설정 형식을 기록합니다.
+
+| 에이전트 | 설정 파일 | MCP 키 |
+|-------|-------------|---------|
+| Claude Code | `~/.claude.json` | `mcpServers` |
+| Cursor | `~/.cursor/mcp.json` | `mcpServers` |
+| Windsurf | `~/.windsurf/mcp.json` | `mcpServers` |
+| GitHub Copilot | `~/.copilot/mcp-config.json` | `mcpServers` |
+| Zed | `~/.zed/settings.json` | `mcpServers` |
+| Continue.dev | `~/.continue/config.json` | `mcpServers` |
+| Augment | `~/.augment/settings.json` | `mcpServers` |
+| OpenCode | `~/.config/opencode/opencode.jsonc` | `mcp` |
+| Antigravity | `~/.gemini/config/mcp_config.json` | `mcpServers` |
+| Hermes Agent | `~/.hermes/config.yaml` | `mcp_servers` |
+| Codex | `~/.codex/config.toml` | `mcp_servers` |
+| OpenClaw | `~/.openclaw/workspace/skills/codenexus/SKILL.md` | skill |
+
+---
+
+## 다른 AI 에이전트 연동
+
+### OpenClaw 연동
+
+[OpenClaw](https://github.com/openclaw/openclaw)는 WhatsApp, Telegram, Slack, Discord 등과 연결되는 개인 AI 어시스턴트입니다.
+
+#### 설정 방법
+
+OpenClaw는 MCP를 직접 지원하지 않습니다. 스킬 시스템을 통해 CLI 명령어를 사용합니다.
+
+**1. CodeNexus 설치:**
+
+```bash
+pip install codenexus-ai
+```
+
+**2. OpenClaw 스킬 생성:**
+
+`~/.openclaw/workspace/skills/codenexus/SKILL.md` 파일 생성:
+
+```markdown
+---
+name: codenexus
+description: CodeNexus로 코드 검색 및 분석
+allowed_tools:
+  - bash
+---
+
+# CodeNexus 스킬
+
+CodeNexus를 사용하여 워크스페이스의 코드를 검색하고 분석합니다.
+
+## 명령어
+
+- `codenexus index` - 워크스페이스 인덱싱
+- `codenexus search "query"` - 코드 검색
+- `codenexus pipeline "task"` - 태스크용 컨텍스트 생성
+```
+
+**3. OpenClaw에서 사용:**
+
+```
+/codenexus search "인증 미들웨어"
+/codenexus pipeline "로그인 버그 수정"
+```
+
+### Hermes Agent 연동
+
+[Hermes Agent](https://github.com/NousResearch/hermes-agent)는 Nous Research의 자기 개선 AI 에이전트입니다.
+
+#### 설정 방법
+
+Hermes는 MCP 서버를 지원합니다. CodeNexus를 MCP 서버로 설정하세요.
+
+**1. CodeNexus 설치:**
+
+```bash
+pip install codenexus-ai
+```
+
+**2. MCP 서버 추가:**
+
+```bash
+hermes mcp add codenexus -- codenexus -w /path/to/your/project serve
+```
+
+또는 `~/.hermes/config.yaml`에 추가:
+
+```yaml
+mcp_servers:
+  codenexus:
+    command: codenexus
+    args:
+      - serve
+      - -w
+      - /path/to/your/project
+```
+
+**3. Hermes에서 사용:**
+
+```
+/hermes search "인증 미들웨어"
+/hermes pipeline "로그인 버그 수정"
+```
+
+### OpenCode 연동
+
+[OpenCode](https://opencode.ai/)는 오픈 소스 AI 코딩 에이전트입니다. CodeNexus는 CLI와 바로 연결됩니다.
+
+**1. CodeNexus 설치:**
+```bash
+pip install codenexus-ai
+```
+
+**2. MCP 서버 추가 (`~/.config/opencode/opencode.jsonc` 자동 구성):**
+```bash
+opencode mcp add codenexus -- codenexus -w /path/to/your/project serve
+```
+
+마법사 사용:
+```bash
+codenexus wizard setup opencode
+```
+
+**3. 확인:**
+```bash
+opencode mcp list
+# → ✓ codenexus connected
+```
+
+### Antigravity 연동
+
+[Antigravity](https://antigravity.google/)(구글 에이전틱 IDE/CLI, `agy`)는 설정 파일을 통해 MCP를 지원합니다. `mcp add` 하위 명령이 없으므로 설정에 서버 블록을 주입합니다.
+
+**1. CodeNexus 설치:**
+```bash
+pip install codenexus-ai
+```
+
+**2. 마법사로 적용 (`~/.gemini/config/mcp_config.json` 기록):**
+```bash
+codenexus wizard setup antigravity
+```
+
+또는 `~/.gemini/config/mcp_config.json`(또는 워크스페이스 `.agents/mcp_config.json`)에 직접 추가:
+```json
+{
+  "mcpServers": {
+    "codenexus": {
+      "command": "codenexus",
+      "args": ["-w", "/path/to/your/project", "serve"]
+    }
+  }
+}
+```
+
+**3. Antigravity CLI/IDE에서 `/mcp`로 리로드** 후 `run_pipeline` / `get_context_capsule` 도구를 통해 CodeNexus를 사용합니다.
+
+### 다른 에이전트
+
+CLI 명령어를 지원하는 모든 에이전트에서 사용 가능:
+
+```bash
+# 직접 CLI 사용
+codenexus index
+codenexus search "query"
+codenexus pipeline "task"
+codenexus status
+
+# 프로그래밍 방식 사용을 위한 JSON 출력
+codenexus search "query" --json
+```
+
+`pipeline` 명령은 원시 JSON 대신 **사람이 읽는 컨텍스트 캡슐**(작업, 감지된
+의도, 토큰 추정, 피봇 파일 패널, 스켈리톤 트리)을 출력합니다. 프로그래밍
+클라이언트(MCP 에이전트)는 `run_pipeline` 도구로 동일 데이터를 구조화된 JSON으로
+받습니다.
+
+---
+
+## 토큰 절감 예시
+
+`openclaw_workspace/projects` 인덱스 기준 측정 (211개 파일, 4,224개 노드, 62,194개 엣지):
+
+**전체 코드베이스를 모델에 전송할 때:**
+```
+951,322 토큰 (전체 소스: Python + JS/TS)
+```
+
+**작업별로 CodeNexus에 컨텍스트 요청할 때** (`run_pipeline`, 실제 작업 5개 평균):
+```
+작업당 ~4,325 토큰
+```
+
+**절감율: 약 99.5%** — 작업과 관련된 파일/정의만 반환됩니다.
+
+> 정확한 수치는 프로젝트 크기와 작업 범위에 따라 다릅니다. CodeNexus는 항상 전체 트리가 아닌 *관련된* 일부만 반환합니다.
+
+---
+
+## 설정 마법사
+
+CodeNexus는 AI 코딩 에이전트를 쉽게 설정할 수 있는 마법사를 포함하고 있습니다.
+
+### 설치된 에이전트 감지
+
+```bash
+codenexus wizard detect
+```
+
+### 지원되는 에이전트 목록
+
+```bash
+codenexus wizard list
+```
+
+### 특정 에이전트 설정
+
+```bash
+# Claude Code
+codenexus wizard setup claude_code
+
+# OpenClaw
+codenexus wizard setup openclaw
+
+# Hermes Agent
+codenexus wizard setup hermes
+
+# Cursor
+codenexus wizard setup cursor
+
+# GitHub Copilot
+codenexus wizard setup copilot
+
+# Codex
+codenexus wizard setup codex
+
+# OpenCode (오픈 소스 CLI)
+codenexus wizard setup opencode
+
+# Antigravity (구글 에이전틱 IDE/CLI — `agy`)
+codenexus wizard setup antigravity
+
+# 그 외...
+```
+
+**참고:** 설정 후 자동으로 프로젝트를 인덱싱합니다.
+
+> **에이전트별 참고 사항**
+> - **OpenCode**는 CLI로 구성합니다(`opencode mcp add codenexus -- codenexus -w <project> serve`) — `~/.config/opencode/opencode.jsonc`(JSON5)에 기록되며 CodeNexus가 자동으로 읽어 들입니다.
+> - **Antigravity**는 `mcp add` 하위 명령이 없으므로 CodeNexus가 `~/.gemini/config/mcp_config.json`(또는 워크스페이스 `.agents/mcp_config.json`)에 서버 블록을 주입합니다. 적용 후 Antigravity에서 `/mcp`로 리로드하세요.
+
+### 인덱스 삭제
+
+```bash
+codenexus wizard clear
+```
+
+인덱스 디렉토리를 표시하고, 선택적으로 삭제할 수 있습니다.
+
+스크립트/CI 등 비대화형 환경에서는 프롬프트 없이 전체 삭제:
+
+```bash
+codenexus wizard clear --all --yes
+```
+
+- `--all`: 발견된 모든 인덱스 선택
+- `--yes`: 확인 프롬프트 생략
+
+ID 지정 삭제(`idx-1,idx-3` 입력)나 프로젝트 디렉토리명 입력으로 개별 확인 삭제도 가능합니다.
+
+### 대화형 설정
+
+```bash
+codenexus wizard interactive
+```
+
+---
+
+## CLI 명령어
+
+| 명령어 | 설명 |
+|--------|------|
+| `codenexus index` | 워크스페이스 인덱싱 |
+| `codenexus search <query>` | 컨텍스트 검색 (`--json` 지원) |
+| `codenexus pipeline <task>` | 컨텍스트 파이프라인 실행 |
+| `codenexus status` | 인덱스 상태 확인 (`--json` 지원) |
+| `codenexus top` | 중앙성 상위 노드 보기 |
+| `codenexus impact <symbol>` | 임팩트 분석 |
+| `codenexus serve` | MCP 서버 시작 |
+| `codenexus clear` | 인덱스 데이터 삭제 |
+
+---
+
+## 로드맵
+
+- [x] 기본 의존성 그래프
+- [x] PageRank 중앙성 (import 그래프 기반, 실노드 간 엣지)
+- [x] 병렬 인덱싱
+- [x] 증분 인덱싱
+- [x] Tree-sitter 통합 (`pip install "codenexus-ai[full]"`)
+- [x] 로컬 LLM 지원
+- [x] 멀티 레포 워크스페이스
+- [x] VS Code 확장
+- [ ] 함수 수준 콜그래프 추출 확대 (진행 중)
+
+---
+
+## 기여하기
+
+기여를 환영합니다! Pull Request를 제출해주세요.
+
+1. Fork 하기
+2. 피처 브랜치 만들기 (`git checkout -b feature/amazing-feature`)
+3. 커밋하기 (`git commit -m 'Amazing feature 추가'`)
+4. 푸시하기 (`git push origin feature/amazing-feature`)
+5. Pull Request 열기
+
+---
+
+## 라이선스
+
+이 프로젝트는 MIT 라이선스로 제공됩니다. 자세한 내용은 [LICENSE](LICENSE) 파일을 참조하세요.
+
+CodeNexus는 시작 시 `CodeNexusServer`가 확인하는 **선택적 라이선스 티어**로
+기능을 게이팅합니다. 티어 제한은 자동 적용됩니다:
+
+| 기능               | Free             | Pro / Team / Enterprise |
+|--------------------|------------------|--------------------------|
+| 언어               | Python, JS, TS   | 전체 7개 (Go, Rust, Java, C# 포함) |
+| 최대 인덱싱 노드   | 5,000            | 100,000                  |
+| 세션 메모리        | —                | ✅                        |
+| 로컬 LLM           | —                | ✅                        |
+| 멀티 레포          | —                | ✅                        |
+
+티어 확인 또는 키 활성화:
+
+```bash
+codenexus license status
+codenexus license activate CNX-PRO-<owner>-<YYYYMMDD>
+codenexus license features
+```
+
+`codenexus serve` 실행 시 활성 티어가 stderr에 표시됩니다:
+
+```
+[codenexus] Tier: free | languages: javascript, python, typescript | memory: off | llm: off
+```
+
+---
+
+## 감사의 말
+
+- [vexp](https://vexp.dev/)에서 영감을 받음
+- Python, SQLite, MCP로 구축
+- 모든 기여자에게 감사
+
+---
+
+## 지원
+
+CodeNexus가 유용하다면 프로젝트 지원을 고려해주세요:
+
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/uptodatelabs)
+[![GitHub Sponsors](https://img.shields.io/badge/Sponsor-CodeNexus-ea4aaa?style=for-the-badge&logo=githubsponsors&logoColor=white)](https://github.com/sponsors/uptodatelabs)
+
+---
+
+**코드를 연결하세요. AI를 강화하세요.**
