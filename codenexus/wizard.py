@@ -1,11 +1,17 @@
 """Setup wizard for AI coding agent integration."""
 
 import json
-import sys
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Optional, Dict, List
+
+
+def _ask_input(prompt: str) -> str | None:
+    """Read a line from the user; None when no interactive input exists."""
+    try:
+        return input(prompt).strip()
+    except (EOFError, KeyboardInterrupt):
+        return None
 
 
 class AgentType(Enum):
@@ -127,8 +133,8 @@ class AgentWizard:
 
     def __init__(self):
         self.workspace = Path.cwd()
-    
-    def get_indexed_projects(self) -> Dict[str, List[Dict]]:
+
+    def get_indexed_projects(self) -> dict[str, list[dict]]:
         """Get all indexed projects from all detected agents."""
         from .agent_parser import get_all_indexed_projects
         return get_all_indexed_projects()
@@ -418,13 +424,16 @@ class AgentWizard:
             print(f"  {i}. {info.name}")
 
         print()
-        choice = input("Select agent number: ").strip()
+        choice = _ask_input("Select agent number: ")
+        if choice is None:
+            print("[INFO] No interactive input available; cancelling.")
+            return
 
         try:
             idx = int(choice) - 1
             if 0 <= idx < len(installed):
                 selected_agent = installed[idx]
-                project_path = input(f"Project path [{self.workspace}]: ").strip()
+                project_path = _ask_input(f"Project path [{self.workspace}]: ") or ""
                 if not project_path:
                     project_path = str(self.workspace)
 
@@ -432,7 +441,7 @@ class AgentWizard:
                 self.print_setup_guide(selected_agent, Path(project_path))
 
                 # Ask to apply
-                apply = input("Apply configuration automatically? (y/n): ").strip().lower()
+                apply = (_ask_input("Apply configuration automatically? (y/n): ") or "").lower()
                 if apply == "y" or apply == "yes":
                     self.apply_config(selected_agent, Path(project_path))
                     print("\n[SUCCESS] Configuration applied!")
@@ -542,7 +551,12 @@ Use CodeNexus to search and analyze code in the workspace.
         return True
 
     def _apply_mcp_config(self, info, config):
-        """Apply MCP configuration for an agent."""
+        """Apply MCP configuration for an agent.
+
+        Safety rules: a config file that exists but cannot be read ABORTS the
+        merge (never overwrite unreadable user state), the original file is
+        backed up before the first modification, and writes are atomic.
+        """
         config_path = Path(info.config_file).expanduser()
 
         # Create parent directory
@@ -559,7 +573,7 @@ Use CodeNexus to search and analyze code in the workspace.
                 if is_yaml:
                     import yaml
 
-                    with open(config_path) as f:
+                    with open(config_path, encoding="utf-8-sig") as f:
                         existing_config = yaml.safe_load(f) or {}
                 elif is_toml:
                     try:
@@ -569,11 +583,14 @@ Use CodeNexus to search and analyze code in the workspace.
                     with open(config_path, "rb") as f:
                         existing_config = tomllib.load(f)
                 else:
-                    with open(config_path) as f:
+                    with open(config_path, encoding="utf-8-sig") as f:
                         existing_config = json.load(f)
             except Exception as e:
-                print(f"[WARNING] Could not read {config_path}: {e}")
-                existing_config = {}
+                # Overwriting unreadable state (e.g. ~/.claude.json holds
+                # session history) destroyed user data once already. Abort.
+                print(f"[ERROR] {config_path} exists but could not be read ({e}).")
+                print("[ERROR] Aborting: fix or remove the file manually, then retry.")
+                return False
 
         # Merge configs
         for key, value in config.items():
@@ -585,32 +602,39 @@ Use CodeNexus to search and analyze code in the workspace.
             else:
                 existing_config[key] = value
 
-        # Write config in appropriate format
+        # Back up the previous content before touching anything.
+        backup_path = config_path.with_suffix(config_path.suffix + ".codenexus-backup")
+        try:
+            backup_path.write_bytes(config_path.read_bytes())
+        except OSError as e:
+            print(f"[WARNING] Could not back up {config_path}: {e}")
+
+        # Write atomically (temp file + replace) in the appropriate format.
+        tmp_path = config_path.with_suffix(config_path.suffix + ".tmp")
         try:
             if is_yaml:
                 import yaml
 
-                with open(config_path, "w") as f:
+                with open(tmp_path, "w", encoding="utf-8") as f:
                     yaml.dump(existing_config, f, default_flow_style=False, allow_unicode=True)
             elif is_toml:
-                try:
-                    import tomli_w
-                except ImportError:
-                    print("[WARNING] tomli-w not installed. Installing...")
-                    import subprocess
+                import tomli_w
 
-                    subprocess.check_call([sys.executable, "-m", "pip", "install", "tomli-w"])
-                    import tomli_w
-                with open(config_path, "wb") as f:
+                with open(tmp_path, "wb") as f:
                     tomli_w.dump(existing_config, f)
             else:
-                with open(config_path, "w") as f:
+                with open(tmp_path, "w", encoding="utf-8") as f:
                     json.dump(existing_config, f, indent=2)
-
-            print(f"[SUCCESS] Updated {config_path}")
+            tmp_path.replace(config_path)
+            print(f"[SUCCESS] Updated {config_path} (backup: {backup_path.name})")
             return True
+        except ImportError as e:
+            print(f"[ERROR] Missing dependency for writing {config_path.name}: {e}")
+            tmp_path.unlink(missing_ok=True)
+            return False
         except Exception as e:
             print(f"[ERROR] Could not write {config_path}: {e}")
+            tmp_path.unlink(missing_ok=True)
             return False
 
 
