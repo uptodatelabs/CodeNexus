@@ -509,7 +509,6 @@ class CodeParser:
                 calls.append((i, m.group(1)))
 
         # Second pass: attribute calls to their enclosing definition
-        def_name_set = {d["name"] for d in defs}
         for line_idx, callee in calls:
             # Find the innermost definition that contains this line
             enclosing = None
