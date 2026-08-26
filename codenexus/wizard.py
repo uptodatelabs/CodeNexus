@@ -713,12 +713,14 @@ Use CodeNexus to search and analyze code in the workspace.
                 print("[ERROR] Aborting: fix or remove the file manually, then retry.")
                 return False
 
-        # Back up the previous content before touching anything.
-        backup_path = config_path.with_suffix(config_path.suffix + ".codenexus-backup")
-        try:
-            backup_path.write_bytes(config_path.read_bytes())
-        except OSError as e:
-            print(f"[WARNING] Could not back up {config_path}: {e}")
+        # Back up the previous content before touching anything (skip when
+        # creating a brand-new config file — there is nothing to back up).
+        if config_path.exists():
+            backup_path = config_path.with_suffix(config_path.suffix + ".codenexus-backup")
+            try:
+                backup_path.write_bytes(config_path.read_bytes())
+            except OSError as e:
+                print(f"[WARNING] Could not back up {config_path}: {e}")
 
         # Merge configs
         for key, value in config.items():
