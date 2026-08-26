@@ -322,6 +322,13 @@ class CodeNexusServer:
         pending_hashes: list[tuple[str, str]] = []  # (cache_key, md5)
         indexed = 0
 
+        # Free-tier node budget (None/absent means unlimited)
+        from .license import get_license
+
+        max_nodes = get_license().get_limit("max_nodes")
+        if not isinstance(max_nodes, int):
+            max_nodes = None
+
         def parse_one(item: tuple[Path, str]):
             file_path, cache_key = item
             return file_path, cache_key, self._parse_single_file(file_path)
@@ -330,6 +337,19 @@ class CodeNexusServer:
             for file_path, cache_key, result in executor.map(parse_one, files_to_index):
                 if result is None:
                     continue  # failed parse: leave old cache entry untouched
+
+                if max_nodes is not None:
+                    current = self.graph.conn.execute(
+                        "SELECT COUNT(*) FROM nodes"
+                    ).fetchone()[0]
+                    if current >= max_nodes:
+                        logger.warning(
+                            "Free tier node limit (%d) reached; skipping remaining "
+                            "files. Upgrade to Pro at https://codenexus.dev/pricing",
+                            max_nodes,
+                        )
+                        break
+
                 nodes, raw_edges = result
                 self.graph.add_nodes(nodes)
                 # Raw import edges are NOT inserted directly: their source is

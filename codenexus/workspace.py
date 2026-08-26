@@ -111,74 +111,6 @@ class MultiRepoWorkspace:
             logger.error("Could not save workspace config: %s", e)
             return False
 
-
-@dataclass
-class RepoConfig:
-    """Repository configuration."""
-
-    alias: str
-    path: Path
-    description: str = ""
-
-
-@dataclass
-class WorkspaceConfig:
-    """Workspace configuration."""
-
-    name: str
-    repos: list[RepoConfig] = field(default_factory=list)
-
-
-class MultiRepoWorkspace:
-    """Manage multiple repositories as a unified workspace."""
-
-    def __init__(self, workspace_path: Path):
-        self.workspace_path = workspace_path
-        self.config_path = workspace_path / ".codenexus" / "workspace.json"
-        self.config: WorkspaceConfig | None = None
-        self.graphs: dict[str, DependencyGraph] = {}
-        self.parser = CodeParser()
-
-        self._load_config()
-
-    def _load_config(self):
-        """Load workspace configuration."""
-        if self.config_path.exists():
-            try:
-                with open(self.config_path) as f:
-                    data = json.load(f)
-                    self.config = WorkspaceConfig(
-                        name=data.get("name", "default"),
-                        repos=[
-                            RepoConfig(
-                                alias=r["alias"],
-                                path=Path(r["path"]),
-                                description=r.get("description", ""),
-                            )
-                            for r in data.get("repos", [])
-                        ],
-                    )
-            except Exception as e:
-                print(f"Error loading workspace config: {e}")
-
-    def save_config(self):
-        """Save workspace configuration."""
-        if not self.config:
-            return
-
-        self.config_path.parent.mkdir(parents=True, exist_ok=True)
-
-        data = {
-            "name": self.config.name,
-            "repos": [
-                {"alias": r.alias, "path": str(r.path), "description": r.description}
-                for r in self.config.repos
-            ],
-        }
-
-        with open(self.config_path, "w") as f:
-            json.dump(data, f, indent=2)
-
     def add_repo(self, alias: str, path: Path, description: str = "") -> bool:
         """
         Add a repository to the workspace.
@@ -211,6 +143,18 @@ class MultiRepoWorkspace:
             if repo.alias == alias:
                 logger.warning("Repository '%s' already exists", alias)
                 return False
+
+        # Enforce tier limit on repository count
+        from .license import get_license
+
+        max_repos = get_license().get_limit("max_repos")
+        if isinstance(max_repos, int) and len(self.config.repos) >= max_repos:
+            logger.error(
+                "Free tier allows %d workspace repo(s); upgrade to Pro at "
+                "https://codenexus.dev/pricing for more.",
+                max_repos,
+            )
+            return False
 
         # Check if path exists
         if not path.exists():
