@@ -217,7 +217,10 @@ class SessionMemory:
         tags: list[str] | None = None,
     ) -> Decision:
         """Add a decision to a session."""
-        decision_id = f"decision_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}"
+        decision_id = (
+            f"decision_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}"
+            f"_{uuid.uuid4().hex[:6]}"
+        )
         timestamp = datetime.now()
 
         with self._lock:

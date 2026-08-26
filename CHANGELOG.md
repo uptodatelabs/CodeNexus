@@ -1,3 +1,24 @@
+## [1.2.0] - 2026-08-26
+
+### Fixed
+- Import edges now resolve to real module/symbol nodes (resolver.py):
+  PageRank, impact and dependents queries operate on a connected graph;
+  pseudo `::import` edges are filtered before insert
+- Graph hardening: thread locks, FTS5 trigger sync + rebuild migration,
+  unique-edge dedupe migration, deleted-file purge on incremental index
+- tree-sitter pinned <0.22 (0.23+ silently broke grammar loading, degrading
+  installs to regex mode); parser slices spans from bytes so CJK sources no
+  longer corrupt names/signatures; BOM stripped; regex fallback captures
+  Rust enums, skips Java/C# constructors shadowing class ids
+- Hermes config parsing survives Windows paths in double-quoted YAML;
+  agent configs read as explicit UTF-8 (cp949 crash)
+- wizard setup aborts instead of overwriting unreadable agent configs;
+  memory decision ids collision-proof; license checks strictly boolean with
+  real tier enforcement
+- `wizard clear` listing rendered as plain-text blocks (rich panels dropped
+  content on cp949 consoles and wrapped long paths)
+- dispatch raises for unknown tools; cli search/status --json flags
+
 # Changelog
 
 All notable changes to CodeNexus will be documented in this file.

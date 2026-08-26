@@ -148,7 +148,7 @@ class CodeParser:
 
             # Try tree-sitter first
             if self.use_tree_sitter and language in self.parsers:
-                return self._parse_with_tree_sitter(source, str(file_path), language)
+                return self._parse_with_tree_sitter(raw, str(file_path), language)
 
             # Fallback to regex
             return self._parse_with_regex(source, str(file_path), language)
@@ -156,15 +156,26 @@ class CodeParser:
             print(f"Error parsing {file_path}: {e}")
             return [], []
 
+    @staticmethod
+    def _slice_utf8(src: bytes, start: int, end: int) -> str:
+        """Decode a byte range of source into text safely.
+
+        tree-sitter offsets are BYTE offsets; slicing the decoded str with
+        them corrupts every span after the first multi-byte character.
+        """
+        return src[start:end].decode("utf-8", errors="replace")
+
     def _parse_with_tree_sitter(
-        self, source: str, file_path: str, language: str
+        self, source_bytes: bytes, file_path: str, language: str
     ) -> tuple[list[Node], list[Edge]]:
-        """Parse using tree-sitter AST."""
+        """Parse using tree-sitter AST (all spans sliced from bytes)."""
         parser = self.parsers.get(language)
         if not parser:
-            return self._parse_with_regex(source, file_path, language)
+            return self._parse_with_regex(
+                source_bytes.decode("utf-8", errors="replace"), file_path, language
+            )
 
-        tree = parser.parse(bytes(source, "utf-8"))
+        tree = parser.parse(source_bytes)
         nodes = []
         edges = []
 
@@ -180,11 +191,11 @@ class CodeParser:
                 "function",
                 "method_definition",
             ):
-                name = self._get_node_name(node, source)
+                name = self._get_node_name(node, source_bytes)
                 if name:
                     node_id = name
-                    sig = self._extract_signature_tree_sitter(node, source)
-                    content = source[node.start_byte : node.end_byte]
+                    sig = self._extract_signature_tree_sitter(node, source_bytes)
+                    content = self._slice_utf8(source_bytes, node.start_byte, node.end_byte)
 
                     nodes.append(
                         Node(
@@ -210,11 +221,11 @@ class CodeParser:
                 "class_declaration",
                 "class",
             ):
-                name = self._get_node_name(node, source)
+                name = self._get_node_name(node, source_bytes)
                 if name:
                     node_id = name
-                    sig = self._extract_signature_tree_sitter(node, source)
-                    content = source[node.start_byte : node.end_byte]
+                    sig = self._extract_signature_tree_sitter(node, source_bytes)
+                    content = self._slice_utf8(source_bytes, node.start_byte, node.end_byte)
 
                     nodes.append(
                         Node(
@@ -240,7 +251,7 @@ class CodeParser:
                 "import_from_statement",
                 "import_declaration",
             ):
-                imp = source[node.start_byte : node.end_byte]
+                imp = self._slice_utf8(source_bytes, node.start_byte, node.end_byte)
                 edges.append(
                     Edge(
                         source_id=f"{file_path}::import",
@@ -260,7 +271,7 @@ class CodeParser:
                 "method_invocation",
                 "invocation_expression",
             ):
-                callee = self._get_callee_name(node, source)
+                callee = self._get_callee_name(node, source_bytes)
                 if callee and current_def_stack:
                     caller_id = current_def_stack[-1]
                     edges.append(
@@ -281,7 +292,7 @@ class CodeParser:
         walk_node(tree.root_node)
         return nodes, edges
 
-    def _get_callee_name(self, node, source: str) -> str | None:
+    def _get_callee_name(self, node, source_bytes: bytes) -> str | None:
         """Extract the callee name from a call/invocation node."""
         # Common shapes:
         #   call_expression: function(...)  -> child[0] is identifier/field_expression
@@ -303,7 +314,7 @@ class CodeParser:
             return None
 
         if target.type in ("identifier",):
-            return source[target.start_byte : target.end_byte]
+            return self._slice_utf8(source_bytes, target.start_byte, target.end_byte)
 
         if target.type in (
             "field_expression",
@@ -316,32 +327,32 @@ class CodeParser:
                 if c.type == "identifier":
                     last = c
             if last is not None:
-                return source[last.start_byte : last.end_byte]
-            return source[target.start_byte : target.end_byte]
+                return self._slice_utf8(source_bytes, last.start_byte, last.end_byte)
+            return self._slice_utf8(source_bytes, target.start_byte, target.end_byte)
 
         if target.type in ("scoped_identifier", "qualified_identifier"):
             # module::func or a.b.c -> take the last segment
-            text = source[target.start_byte : target.end_byte]
+            text = self._slice_utf8(source_bytes, target.start_byte, target.end_byte)
             return text.split("::")[-1].split(".")[-1]
 
         return None
 
-    def _get_node_name(self, node, source: str) -> str | None:
+    def _get_node_name(self, node, source_bytes: bytes) -> str | None:
         """Extract name from AST node."""
         # Try common name fields
         for field in ["name", "identifier"]:
             name_node = node.child_by_field_name(field)
             if name_node:
-                return source[name_node.start_byte : name_node.end_byte]
+                return self._slice_utf8(source_bytes, name_node.start_byte, name_node.end_byte)
 
         # Try first identifier child
         for child in node.children:
             if child.type == "identifier":
-                return source[child.start_byte : child.end_byte]
+                return self._slice_utf8(source_bytes, child.start_byte, child.end_byte)
 
         return None
 
-    def _extract_signature_tree_sitter(self, node, source: str) -> str:
+    def _extract_signature_tree_sitter(self, node, source_bytes: bytes) -> str:
         """Extract signature from tree-sitter node."""
         # Get text up to the body/block
         sig_end = node.end_byte
@@ -356,7 +367,7 @@ class CodeParser:
                 sig_end = child.start_byte
                 break
 
-        sig = source[node.start_byte : sig_end].strip()
+        sig = self._slice_utf8(source_bytes, node.start_byte, sig_end).strip()
         if sig.endswith(":"):
             sig = sig[:-1].strip()
         elif sig.endswith("=>"):

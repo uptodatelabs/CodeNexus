@@ -90,7 +90,7 @@ def search(ctx, query, as_json, top):
             }
             for n in nodes
         ]
-        console.print_json(json.dumps(payload))
+        print(json.dumps(payload))
         return
 
     if not nodes:
@@ -187,9 +187,7 @@ def status(ctx, as_json):
     graph.close()
 
     if as_json:
-        console.print_json(
-            json.dumps({"nodes": node_count, "edges": edge_count, "files": file_count})
-        )
+        print(json.dumps({"nodes": node_count, "edges": edge_count, "files": file_count}))
         return
 
     table = Table(title="Index Status")
@@ -1077,22 +1075,17 @@ def clear(clear_all, yes):
         # The exact token the user must type to confirm deletion
         e["confirm_token"] = os.path.basename(os.path.normpath(e["project"]))
 
-        block = Table(show_header=False, show_edge=False, padding=(0, 2))
-        block.add_column("Field", style="bold cyan", no_wrap=True)
-        block.add_column("Value", overflow="fold")
-        block.add_row("Agents", ", ".join(sorted(e["agents"])) or "(current dir)")
-        block.add_row("Project Path", _shorten(e["project"]))
-        block.add_row("Size", e["size"])
-
-        console.print(
-            Panel(
-                block,
-                title=f"[bold]{e['id']}[/bold]",
-                subtitle=f"[blue]{e['size']}[/blue]",
-                border_style="cyan",
-                expand=False,
-            )
-        )
+        # Raw print(): this listing must never wrap or drop characters.
+        # rich folds long paths on narrow consoles and loses whole blocks on
+        # legacy codepages (cp949), both of which broke scripted consumers.
+        agents_str = ", ".join(sorted(e["agents"])) or "(current dir)"
+        print(f"{e['id']}")
+        print(f"  Agents:       {agents_str}")
+        print(f"  Project Path: {_shorten(e['project'])}")
+        print(f"  Full Path:    {e['project']}")
+        print(f"  Index Dir:    {e['index_dir']}")
+        print(f"  Size:         {e['size']}")
+        print()
 
     # Read all of stdin up front so click does not try to interpret leftover
     # piped input as additional command-line arguments (which caused a

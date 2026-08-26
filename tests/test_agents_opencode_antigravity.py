@@ -153,6 +153,7 @@ def test_openclaw_parser_finds_nested_workspace_skill(tmp_path, monkeypatch):
     fake_home = tmp_path / "home"
     fake_home.mkdir()
     monkeypatch.setenv("HOME", str(fake_home))
+    monkeypatch.setenv("USERPROFILE", str(fake_home))
 
     # openclaw.json declares a nested workspace.
     openclaw_dir = fake_home / ".openclaw"

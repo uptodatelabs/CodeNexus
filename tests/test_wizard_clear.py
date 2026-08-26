@@ -35,7 +35,7 @@ def _write_agent_configs(home: Path, paths: dict[str, Path]):
         (home / ".hermes").mkdir(parents=True, exist_ok=True)
         (home / ".hermes" / "config.yaml").write_text(
             "mcp_servers:\n  codenexus:\n    command: codenexus\n"
-            f'    args: ["-w", "{paths["hermes"]}", "serve"]\n'
+            f'    args: ["-w", "{str(paths["hermes"]).replace(chr(92), chr(92)*2)}", "serve"]\n'
         )
     if "opencode" in paths:
         (home / ".config" / "opencode").mkdir(parents=True, exist_ok=True)
@@ -126,6 +126,8 @@ def test_clear_merges_agents_same_index(tmp_path, monkeypatch):
     )
 
     monkeypatch.setenv("HOME", str(fakehome))
+    monkeypatch.setenv("USERPROFILE", str(fakehome))
+    monkeypatch.setenv("USERPROFILE", str(fakehome))
 
     runner = CliRunner()
     result = runner.invoke(cli, ["wizard", "clear", "--all", "--yes"])
@@ -160,6 +162,8 @@ def test_clear_warns_unindexed_agent(tmp_path, monkeypatch):
     _write_agent_configs(fakehome, {"claude": proj_a, "opencode": proj_b})
 
     monkeypatch.setenv("HOME", str(fakehome))
+    monkeypatch.setenv("USERPROFILE", str(fakehome))
+    monkeypatch.setenv("USERPROFILE", str(fakehome))
 
     runner = CliRunner()
     result = runner.invoke(cli, ["wizard", "clear", "--all", "--yes"])
@@ -191,6 +195,8 @@ def test_clear_separates_distinct_indexes(tmp_path, monkeypatch):
     _write_agent_configs(fakehome, {"claude": proj_a, "openclaw": proj_b})
 
     monkeypatch.setenv("HOME", str(fakehome))
+    monkeypatch.setenv("USERPROFILE", str(fakehome))
+    monkeypatch.setenv("USERPROFILE", str(fakehome))
 
     runner = CliRunner()
     result = runner.invoke(cli, ["wizard", "clear", "--all", "--yes"])
@@ -236,6 +242,8 @@ def test_clear_all_five_agents_neutral_domains(tmp_path, monkeypatch):
     )
 
     monkeypatch.setenv("HOME", str(fakehome))
+    monkeypatch.setenv("USERPROFILE", str(fakehome))
+    monkeypatch.setenv("USERPROFILE", str(fakehome))
 
     runner = CliRunner()
     result = runner.invoke(cli, ["wizard", "clear", "--all", "--yes"])
@@ -270,6 +278,8 @@ def test_clear_parent_child_paths_neutral(tmp_path, monkeypatch):
     )
 
     monkeypatch.setenv("HOME", str(fakehome))
+    monkeypatch.setenv("USERPROFILE", str(fakehome))
+    monkeypatch.setenv("USERPROFILE", str(fakehome))
 
     runner = CliRunner()
     result = runner.invoke(cli, ["wizard", "clear", "--all", "--yes"])
@@ -302,6 +312,8 @@ def test_clear_missing_config_file_no_crash(tmp_path, monkeypatch):
     _write_agent_configs(fakehome, {"claude": proj_a, "opencode": proj_b})
 
     monkeypatch.setenv("HOME", str(fakehome))
+    monkeypatch.setenv("USERPROFILE", str(fakehome))
+    monkeypatch.setenv("USERPROFILE", str(fakehome))
 
     runner = CliRunner()
     result = runner.invoke(cli, ["wizard", "clear", "--all", "--yes"])

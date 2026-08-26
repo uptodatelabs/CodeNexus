@@ -1,6 +1,7 @@
 """Agent config parsers for detecting indexed projects."""
 
 import json
+import re
 from pathlib import Path
 
 
@@ -132,7 +133,21 @@ class HermesParser(AgentConfigParser):
                         })
 
         except (json.JSONDecodeError, yaml.YAMLError, FileNotFoundError):
-            pass
+            # Windows paths inside double-quoted YAML scalars are invalid
+            # escapes ("C:\Users" -> \U) and make safe_load raise; fall back
+            # to targeted regex extraction instead of dropping the agent.
+            if config_path.suffix == ".yaml":
+                try:
+                    text = config_path.read_text(encoding="utf-8")
+                    # -w lives on its own line apart from the server name,
+                    # so match any -w occurrence in this codenexus-only file.
+                    for fm in re.finditer(r"-w\s+[\"']?([^\"'\s]+)", text):
+                        cand = fm.group(1).strip("`\"'")
+                        expanded = str(Path(cand).expanduser())
+                        if Path(expanded).is_dir():
+                            projects.append({"path": expanded, "config": {}})
+                except OSError:
+                    pass
 
         return projects
 
