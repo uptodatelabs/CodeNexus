@@ -1,3 +1,15 @@
+## [1.2.2] - 2026-08-26
+
+### Fixed — indexing crash on real codebases
+- Call edges referencing symbols without a node (builtins, stdlib, typos,
+  cross-file targets) raised FOREIGN KEY constraint failed and aborted
+  `codenexus index` entirely. Endpoints are now validated at insert time in
+  both indexers; unresolved calls are dropped instead of crashing (red→green
+  regression test included).
+- Method calls via attribute access (`self.validate()`, Python `attribute`
+  nodes) were silently skipped by callee extraction; they now resolve to the
+  method name so same-file call edges connect.
+
 ## [1.2.0] - 2026-08-26
 
 ### Fixed

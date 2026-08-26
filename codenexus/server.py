@@ -485,12 +485,18 @@ class CodeNexusServer:
         node_cap = self.max_nodes_limit
         total_nodes = self.graph.conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
         truncated = False
+        # Call targets may reference builtins/external symbols with no node;
+        # only edges whose endpoints exist may be inserted (FK enforced).
+        known_ids = {
+            row[0] for row in self.graph.conn.execute("SELECT id FROM nodes")
+        }
         for file_path, nodes, edges in parse_results:
             for node in nodes:
                 if node_cap is not None and total_nodes >= node_cap:
                     truncated = True
                     break
                 self.graph.add_node(node)
+                known_ids.add(node.id)
                 total_nodes += 1
             else:
                 for edge in edges:
@@ -498,7 +504,8 @@ class CodeNexusServer:
                         # Pseudo-source edges are rewritten into real
                         # module/symbol edges by the resolver below.
                         continue
-                    self.graph.add_edge(edge)
+                    if edge.source_id in known_ids and edge.target_id in known_ids:
+                        self.graph.add_edge(edge)
             # Track indexed file in session memory.
             self._record_file_change(str(file_path), "index", len(nodes))
 
@@ -520,7 +527,12 @@ class CodeNexusServer:
             for mod_node in module_nodes:
                 if node_cap is None or total_nodes < node_cap:
                     self.graph.add_node(mod_node)
+                    known_ids.add(mod_node.id)
                     total_nodes += 1
+            import_edges = [
+                e for e in import_edges
+                if e.source_id in known_ids and e.target_id in known_ids
+            ]
             self.graph.add_edges(import_edges)
 
         if truncated:

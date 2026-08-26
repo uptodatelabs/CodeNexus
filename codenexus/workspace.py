@@ -258,6 +258,7 @@ class MultiRepoWorkspace:
             source_files.append(file_path)
 
         # Parse and index
+        known_ids = {row[0] for row in graph.conn.execute("SELECT id FROM nodes")}
         entries: list[FileEntry] = []
         indexed = 0
         for file_path in source_files:
@@ -275,10 +276,18 @@ class MultiRepoWorkspace:
                     node.id = f"{alias}:{node.id}"
                     symbols.setdefault(node.name, node.id)
                 graph.add_nodes(nodes)
+                known_ids.update(node.id for node in nodes)
 
                 raw_imports = [edge.target_id for edge in edges]
                 # Raw ::import edges never connect real nodes; the resolver
                 # rewrites them into module/symbol edges below.
+                for edge in edges:
+                    if edge.edge_type == "imports":
+                        continue  # rewritten by the resolver below
+                    edge.source_id = f"{alias}:{edge.source_id}"
+                    edge.target_id = f"{alias}:{edge.target_id}"
+                    if edge.source_id in known_ids and edge.target_id in known_ids:
+                        graph.add_edge(edge)
                 entries.append(
                     FileEntry(
                         abs_path=file_path,

@@ -454,3 +454,62 @@ def test_wizard_merge_creates_backup_and_preserves_data(tmp_path):
     assert merged["projects"]["p1"]["history"] == [1]
     assert "codenexus" in merged["mcpServers"]
     assert (tmp_path / "agent.json.codenexus-backup").exists()
+
+
+# ---------------------------------------------------------------------------
+# Call-graph safety: unresolved callees must not break indexing (P0)
+# ---------------------------------------------------------------------------
+
+def test_indexing_survives_unresolved_calls_and_keeps_real_ones(temp_dir):
+    """Regression: a call whose target has no node (builtin, external,
+    typo) used to raise FOREIGN KEY constraint failed and abort indexing."""
+    import tempfile as _tf
+    from pathlib import Path as _Path
+
+    root = _Path(_tf.mkdtemp())
+    (root / "models.py").write_text(
+        "class User:\n"
+        "    def save(self):\n"
+        "        return self.validate()\n"
+        "    def validate(self):\n"
+        "        return True\n",
+        encoding="utf-8",
+    )
+    (root / "service.py").write_text(
+        "from models import User\n"
+        "\n"
+        "def create_user():\n"
+        "    u = User()\n"
+        "    u.save()\n"
+        "    helper()\n"
+        "    return u\n"
+        "\n"
+        "def helper():\n"
+        "    return 1\n"
+        "\n"
+        "def orphan_caller():\n"
+        "    missing_fn()\n",
+        encoding="utf-8",
+    )
+
+    from codenexus.server import CodeNexusServer
+
+    srv = CodeNexusServer(root)
+    count = srv.index_workspace(incremental=True)  # must not raise
+    assert count == 2
+
+    calls = {
+        (src, tgt)
+        for src, tgt in srv.graph.conn.execute(
+            "SELECT source_id, target_id FROM edges WHERE edge_type='calls'"
+        ).fetchall()
+    }
+    # Resolved same-file calls survive...
+    assert ("create_user", "helper") in calls
+    assert ("save", "validate") in calls
+    # ...unresolvable callees are dropped instead of crashing.
+    assert all(target != "missing_fn" for _, target in calls)
+
+    impact = srv.graph.get_impact_graph("save", depth=2)
+    assert impact["total"] >= 1  # save is reachable from create_user
+    srv.graph.close()

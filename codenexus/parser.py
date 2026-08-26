@@ -307,6 +307,7 @@ class CodeParser:
                 "member_expression",
                 "scoped_identifier",
                 "qualified_identifier",
+                "attribute",
             ):
                 target = child
                 break
@@ -320,6 +321,7 @@ class CodeParser:
             "field_expression",
             "member_expression",
             "selector_expression",
+            "attribute",
         ):
             # Take the last identifier segment (e.g. obj.method -> method)
             last = None
