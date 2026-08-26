@@ -31,4 +31,40 @@ jobs:
       run: ruff check codenexus/ tests/
 
     - name: Test (pytest)
-      run: pytest tests/ --tb=short
+      run: pytest tests/ --tb=short -q --junitxml=results.xml
+
+    - name: Report results to job summary
+      if: always()
+      shell: python
+      run: |
+        import os, sys
+        import xml.etree.ElementTree as ET
+
+        path = "results.xml"
+        lines = []
+        failed = errored = total = 0
+        try:
+            root = ET.parse(path).getroot()
+            suite = root.find("testsuite")
+            total = int(suite.get("tests", 0))
+            failed = int(suite.get("failures", 0))
+            errored = int(suite.get("errors", 0))
+            for case in suite.iter("testcase"):
+                node = case.find("failure") or case.find("error")
+                if node is not None:
+                    lines.append("### FAIL: " + case.get("classname", "") + "::" + case.get("name", ""))
+                    body = (node.get("message") or "")[:600]
+                    lines.append("`" + body.replace("|", "\|") + "`")
+        except Exception as exc:
+            lines.append("results.xml missing/unreadable: " + repr(exc))
+
+        summary = os.environ.get("GITHUB_STEP_SUMMARY")
+        if summary:
+            with open(summary, "a", encoding="utf-8") as f:
+                f.write(f"**pytest**: {total} tests, {failed} failures, {errored} errors
+
+")
+                f.write("
+".join(lines) + "
+")
+        sys.exit(1 if (failed or errored) else 0)
