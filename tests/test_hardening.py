@@ -8,6 +8,7 @@ and wizard config-write safety.
 """
 
 import json
+import sys
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -588,3 +589,39 @@ def test_find_codenexus_index_detects_workspace_root(temp_dir):
     ws_dir = _make_multi_repo_workspace(temp_dir)
     hit = find_codenexus_index(str(ws_dir))
     assert hit is not None and hit.parent == ws_dir / ".codenexus"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="8.3 short names are Windows-only")
+def test_find_codenexus_index_tolerates_8_3_short_path(tmp_path):
+    """A project path passed as a Windows 8.3 short name (``RUNNER~1`` style)
+    must still resolve to the correct canonical index location.
+
+    Regression for the CI-only failure where ``tempfile`` returned a short
+    path but ``find_codenexus_index`` resolved it to the long form, so a
+    strict ``==`` comparison between the two representations failed on every
+    Windows runner while passing everywhere else.
+    """
+    import ctypes
+    from ctypes import wintypes
+
+    from codenexus.agent_parser import find_codenexus_index
+
+    get_short = ctypes.windll.kernel32.GetShortPathNameW
+    get_short.argtypes = [wintypes.LPCWSTR, wintypes.LPWSTR, wintypes.DWORD]
+    get_short.restype = wintypes.DWORD
+
+    ws_dir = _make_multi_repo_workspace(tmp_path)
+    expected = (ws_dir / ".codenexus" / "workspace.json").resolve()
+
+    # Obtain the 8.3 short form of ws_dir and pass THAT to the function —
+    # simulates a Windows TEMP env that yields short paths (github runners).
+    buf = ctypes.create_unicode_buffer(260)
+    get_short(str(ws_dir), buf, 260)
+    short_path = buf.value
+    if not short_path or short_path.lower() == str(ws_dir).lower():
+        pytest.skip("no distinct 8.3 short path available on this machine")
+
+    hit = find_codenexus_index(short_path)
+    assert hit is not None
+    # Compare canonical locations, not string representations.
+    assert hit.resolve() == expected
