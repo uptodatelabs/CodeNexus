@@ -31,37 +31,38 @@ jobs:
       run: ruff check codenexus/ tests/
 
     - name: Test (pytest)
-      run: pytest tests/ --tb=short -q --junitxml=results.xml
+      run: |
+        pytest tests/ --tb=long -ra -q --junitxml=results.xml > pytest-stdout.log 2>&1
+        $code = $LASTEXITCODE
+        Get-Content pytest-stdout.log -Tail 60
+        "exit_code=$code" | Out-File pytest-exit.txt
+        exit $code
 
     - name: Report results to job summary
       if: always()
       shell: python
       run: |
         import os
-        import sys
-        import xml.etree.ElementTree as ET
+        from pathlib import Path
 
-        lines = []
-        failed = errored = total = 0
-        try:
-            suite = ET.parse("results.xml").getroot().find("testsuite")
-            total = int(suite.get("tests", 0))
-            failed = int(suite.get("failures", 0))
-            errored = int(suite.get("errors", 0))
-            for case in suite.iter("testcase"):
-                node = case.find("failure") or case.find("error")
-                if node is not None:
-                    fq = case.get("classname", "") + "::" + case.get("name", "")
-                    lines.append("### FAIL: " + fq)
-                    message = (node.get("message") or "")[:600].replace("|", "/")
-                    lines.append("`" + message + "`")
-        except Exception as exc:
-            lines.append("results.xml missing/unreadable: " + repr(exc))
-
+        out = []
+        for name in ("pytest-exit.txt", "results.xml", "pytest-stdout.log"):
+            fp = Path(name)
+            if not fp.exists():
+                out.append(f"[{name}] MISSING")
+                continue
+            data = fp.read_text(encoding="utf-8", errors="replace")
+            if name == "pytest-stdout.log":
+                out.append("=== tail(pytest-stdout.log) ===")
+                out.extend(data.splitlines()[-45:])
+            else:
+                out.append(f"[{name}] present ({len(data)} bytes)")
         summary = os.environ.get("GITHUB_STEP_SUMMARY", "")
-        if summary:
-            header = "pytest: %d tests, %d failures, %d errors" % (
-                total, failed, errored)
-            with open(summary, "a", encoding="utf-8") as handle:
-                handle.write(header + "\n\n" + "\n".join(lines) + "\n")
-        sys.exit(1 if (failed or errored) else 0)
+        target = Path(summary) if summary else None
+        text = chr(10).join(out) + chr(10)
+        if target:
+            with target.open("a", encoding="utf-8") as handle:
+                handle.write(text)
+        else:
+            print(text)
+        # Never fail here: diagnostics only. The Test step carries the status.
