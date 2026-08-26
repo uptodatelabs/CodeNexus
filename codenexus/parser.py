@@ -523,23 +523,11 @@ class CodeParser:
             if enclosing is None or callee == enclosing["name"]:
                 continue
             target_id = callee
-            # Emit the call edge. If the callee is not defined in this file,
-            # also register it as an external symbol node so the graph stays
-            # connected across files (needed for meaningful PageRank).
-            if callee not in def_name_set:
-                nodes.append(
-                    Node(
-                        id=callee,
-                        file_path="<external>",
-                        name=callee,
-                        node_type="external",
-                        start_line=0,
-                        end_line=0,
-                        content="",
-                        signature=callee,
-                    )
-                )
-                def_name_set.add(callee)
+            # Emit the candidate edge regardless of where the callee is
+            # defined: the indexer validates endpoints against the full node
+            # set (all files), so cross-file calls resolve while builtins and
+            # typos are dropped there. Auto-registering "<external>" nodes was
+            # rejected: it polluted the graph with every builtin call.
             edges.append(
                 Edge(
                     source_id=enclosing["id"],

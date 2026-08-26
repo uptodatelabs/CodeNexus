@@ -1,3 +1,15 @@
+## [1.2.3] - 2026-08-26
+
+### Fixed
+- Regex-mode call extraction diverged from tree-sitter mode: it auto-created
+  `<external>` nodes for every builtin call (graph pollution) while dropping
+  cross-file method calls. Both modes now emit candidate call edges uniformly
+  and the indexer validates endpoints against the full node set — resolved
+  calls connect across files, builtins/typos are dropped.
+- (v1.2.2 was blocked by the release test gate before publishing; its fixes —
+  endpoint validation stopping index crashes, Python attribute-call callee
+  resolution — are included here.)
+
 ## [1.2.2] - 2026-08-26
 
 ### Fixed — indexing crash on real codebases
