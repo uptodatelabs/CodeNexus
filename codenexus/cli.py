@@ -10,20 +10,125 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
+from ._version import __version__
 from .graph import DependencyGraph
 from .server import CodeNexusServer
 
-# Fix Windows console encoding
+# Fix Windows console encoding (guarded: some hosts replace stdout with an
+# object that lacks reconfigure)
 if sys.platform == "win32":
-    sys.stdout.reconfigure(encoding="utf-8")
-    sys.stderr.reconfigure(encoding="utf-8")
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except AttributeError:
+        pass
 
 console = Console()
 
 
+def _ask(prompt: str, default: str = "") -> str:
+    """Prompt the user, degrading gracefully in non-interactive contexts.
+
+    Piped/CI invocations get EOFError from input(); return the default
+    instead of crashing with a traceback.
+    """
+    try:
+        return input(prompt).strip()
+    except (EOFError, KeyboardInterrupt):
+        console.print("\n[yellow]No interactive input available; cancelling.[/]")
+        return default
+
+
+# Tokens with special meaning in wizard clear prompts; a project whose
+# basename collides must be confirmed by its full path instead.
+_RESERVED_TOKENS = {"all", "q", ""}
+
+
+def _collect_index_entries(find_codenexus_index, get_all_indexed_projects) -> list[dict]:
+    """Discover deletable CodeNexus index directories across agent configs."""
+    from pathlib import Path
+
+    project_to_agents: dict[str, set] = {}
+    for agent_name, projects in get_all_indexed_projects().items():
+        for proj in projects:
+            p = proj.get("path")
+            if not p:
+                continue
+            project_to_agents.setdefault(p, set()).add(agent_name)
+
+    # Also include the current working directory (common manual case)
+    project_to_agents.setdefault(str(Path.cwd().resolve()), set())
+
+    entries: list[dict] = []
+    seen_dirs: set = set()
+    for project_path, agents in project_to_agents.items():
+        try:
+            index_path = find_codenexus_index(project_path)
+        except OSError:
+            index_path = None
+        if not index_path:
+            continue
+        index_dir = index_path.parent  # the .codenexus directory
+        real_dir = index_dir.resolve()
+        if real_dir in seen_dirs:
+            continue
+        seen_dirs.add(real_dir)
+
+        total_size = 0
+        try:
+            for f in index_dir.rglob("*"):
+                if f.is_file():
+                    total_size += f.stat().st_size
+        except OSError as e:
+            console.print(f"[yellow]Skipping unreadable index {index_dir}: {e}[/]")
+            continue
+
+        size_str = (
+            f"{total_size / 1024:.1f} KB"
+            if total_size < 1024 * 1024
+            else f"{total_size / (1024 * 1024):.1f} MB"
+        )
+
+        basename = Path(project_path).name
+        if basename.lower() in _RESERVED_TOKENS or basename != basename.strip() or not basename:
+            hint = str(Path(project_path).resolve())
+        else:
+            hint = basename
+
+        entries.append(
+            {
+                "project": project_path,
+                "agents": sorted(agents) if agents else ["(current dir)"],
+                "index_dir": index_dir,
+                "size": size_str,
+                "hint": hint,
+            }
+        )
+    return entries
+
+
+def _print_index_table(entries: list[dict]):
+    table = Table(title="CodeNexus Indexes")
+    table.add_column("ID", style="cyan")
+    table.add_column("Agents", style="magenta")
+    table.add_column("Project Path", style="green")
+    table.add_column("Index Dir", style="yellow")
+    table.add_column("Size", style="blue")
+
+    for e in entries:
+        table.add_row(
+            e["id"],
+            ", ".join(e["agents"]),
+            e["project"],
+            str(e["index_dir"]),
+            e["size"],
+        )
+    console.print(table)
+
+
 @click.group()
 @click.option("--workspace", "-w", default=".", help="Workspace path")
-@click.version_option(version="1.1.18", prog_name="codenexus")
+@click.version_option(version=__version__, prog_name="codenexus")
 @click.pass_context
 def main(ctx, workspace):
     """CodeNexus: The context engine for AI coding agents.
@@ -62,11 +167,13 @@ def index(ctx, full, workers):
 
 @main.command()
 @click.argument("query")
-@click.option("--max-tokens", "-t", default=8000, help="Max tokens for capsule")
+@click.option("--json", "as_json", is_flag=True, help="Output results as JSON")
 @click.option("--top", "-n", default=10, help="Number of results")
 @click.pass_context
-def search(ctx, query, max_tokens, top):
+def search(ctx, query, as_json, top):
     """Search for context related to a query."""
+    import json as _json
+
     workspace = ctx.obj["workspace"]
     db_path = workspace / ".codenexus" / "index.db"
 
@@ -74,8 +181,22 @@ def search(ctx, query, max_tokens, top):
         console.print("[red]No index found. Run 'codenexus index' first.[/]")
         return
 
-    graph = DependencyGraph(db_path)
-    nodes = graph.search_nodes(query, limit=top)
+    with DependencyGraph(db_path) as graph:
+        nodes = graph.search_nodes(query, limit=top)
+
+    if as_json:
+        payload = [
+            {
+                "name": n.name,
+                "file": n.file_path,
+                "type": n.node_type,
+                "line": n.start_line,
+                "score": n.centrality_score,
+            }
+            for n in nodes
+        ]
+        console.print_json(_json.dumps(payload))
+        return
 
     if not nodes:
         console.print(f"[yellow]No results for: {query}[/]")
@@ -117,20 +238,34 @@ def pipeline(ctx, task, max_tokens):
 
 
 @main.command()
+@click.option("--json", "as_json", is_flag=True, help="Output status as JSON")
 @click.pass_context
-def status(ctx):
+def status(ctx, as_json):
     """Show index status and statistics."""
+    import json as _json
+
     workspace = ctx.obj["workspace"]
     db_path = workspace / ".codenexus" / "index.db"
 
     if not db_path.exists():
-        console.print("[yellow]No index found.[/]")
+        if as_json:
+            console.print_json(_json.dumps({"nodes": 0, "edges": 0, "files": 0}))
+        else:
+            console.print("[yellow]No index found.[/]")
         return
 
-    graph = DependencyGraph(db_path)
-    node_count = graph.conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
-    edge_count = graph.conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0]
-    file_count = graph.conn.execute("SELECT COUNT(DISTINCT file_path) FROM nodes").fetchone()[0]
+    with DependencyGraph(db_path) as graph:
+        node_count = graph.conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
+        edge_count = graph.conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0]
+        file_count = graph.conn.execute(
+            "SELECT COUNT(DISTINCT file_path) FROM nodes"
+        ).fetchone()[0]
+
+    if as_json:
+        console.print_json(
+            _json.dumps({"nodes": node_count, "edges": edge_count, "files": file_count})
+        )
+        return
 
     table = Table(title="Index Status")
     table.add_column("Metric", style="cyan")
@@ -162,6 +297,7 @@ def impact(ctx, symbol, depth):
     nodes = graph.search_nodes(symbol, limit=1)
     if not nodes:
         console.print(f"[yellow]Symbol not found: {symbol}[/]")
+        graph.close()
         return
 
     node = nodes[0]
@@ -184,12 +320,13 @@ def impact(ctx, symbol, depth):
             console.print(f"  - {dep['name']} ({dep['file']}) [depth: {dep['depth']}]")
 
     console.print(f"\n[bold]Total Impact: {impact['total']}[/]")
+    graph.close()
 
 
 @main.command()
-@click.option("--depth", "-d", default=10, help="Number of top nodes to show")
+@click.option("--limit", "-n", "--depth", "-d", default=10, help="Number of top nodes to show")
 @click.pass_context
-def top(ctx, depth):
+def top(ctx, limit):
     """Show top nodes by centrality score."""
     workspace = ctx.obj["workspace"]
     db_path = workspace / ".codenexus" / "index.db"
@@ -198,14 +335,14 @@ def top(ctx, depth):
         console.print("[red]No index found. Run 'codenexus index' first.[/]")
         return
 
-    graph = DependencyGraph(db_path)
-    nodes = graph.get_top_central_nodes(depth)
+    with DependencyGraph(db_path) as graph:
+        nodes = graph.get_top_central_nodes(limit)
 
     if not nodes:
         console.print("[yellow]No nodes found.[/]")
         return
 
-    table = Table(title=f"Top {depth} Nodes by Centrality")
+    table = Table(title=f"Top {limit} Nodes by Centrality")
     table.add_column("Rank", style="cyan")
     table.add_column("Name", style="green")
     table.add_column("Type", style="magenta")
@@ -819,8 +956,8 @@ def detect():
     wiz.print_detected_agents()
 
 
-@wizard.command()
-def list():
+@wizard.command(name="list")
+def list_agents():
     """List all supported AI agents."""
     from .wizard import AGENTS
 
@@ -839,7 +976,8 @@ def list():
 @wizard.command()
 @click.argument("agent_name")
 @click.option("--project", "-p", default=".", help="Project path")
-def setup(agent_name, project):
+@click.option("--yes", "-y", is_flag=True, help="Apply without confirmation prompt")
+def setup(agent_name, project, yes):
     """Setup a specific AI agent."""
     from .wizard import AgentWizard, get_agent_by_name
 
@@ -852,15 +990,19 @@ def setup(agent_name, project):
     wiz = AgentWizard()
     wiz.print_setup_guide(agent_type, Path(project).resolve())
 
-    # Ask to apply
-    apply = input("\nApply configuration and index project? (y/n): ").strip().lower()
-    if apply == "y" or apply == "yes":
+    # Ask to apply (--yes skips the prompt for non-interactive use)
+    apply = "y"
+    if not yes:
+        apply = _ask("\nApply configuration and index project? (y/n): ").lower()
+    if apply in ("y", "yes"):
         console.print("\n[yellow]Applying configuration...[/]")
         success = wiz.apply_config(agent_type, Path(project).resolve())
         if success:
             console.print("[green]Configuration applied and project indexed![/]")
         else:
             console.print("[red]Failed to apply configuration[/]")
+    else:
+        console.print("Setup cancelled; no changes were made.")
 
 
 @wizard.command()
@@ -873,7 +1015,7 @@ def interactive():
 
 
 @wizard.command()
-@click.option("--dry-run", is_flag=True, help="Show what would be deleted without removing anything")
+@click.option("--dry-run", is_flag=True, help="List what would be deleted; never prompts or removes")
 def clear(dry_run):
     """Clear index data with interactive selection.
 
@@ -881,104 +1023,36 @@ def clear(dry_run):
     Codex, ...) to find projects wired to CodeNexus via MCP, then lists only
     the ones that actually have an index on disk so you can delete them.
 
-    Deletion requires typing the exact project directory name for every
-    selected entry, so accidental removal of a real index is avoided.
+    Every selected entry must be confirmed individually by typing its exact
+    project directory name (entries whose basename is ambiguous require the
+    full project path), so accidental removal of a real index is avoided.
     """
     import shutil
-    from pathlib import Path
 
     from .agent_parser import find_codenexus_index, get_all_indexed_projects
 
-    # 1. Parse every detected agent's config and collect codenexus project paths
-    agent_projects = get_all_indexed_projects()  # {"Claude Code": [{"path": ...}], ...}
-
-    # Map project path -> set of agents that reference it
-    project_to_agents: dict[str, set] = {}
-    for agent_name, projects in agent_projects.items():
-        for proj in projects:
-            p = proj.get("path")
-            if not p:
-                continue
-            project_to_agents.setdefault(p, set()).add(agent_name)
-
-    # 2. Also include the current working directory (common manual case)
-    cwd = str(Path.cwd().resolve())
-    project_to_agents.setdefault(cwd, set())
-
-    # 3. For each project path, check whether an index actually exists
-    index_entries = []  # list of dicts
-    seen_index_dirs = set()
-    for project_path, agents in project_to_agents.items():
-        index_path = find_codenexus_index(project_path)
-        if not index_path:
-            continue
-        index_dir = index_path.parent  # the .codenexus directory
-        real_dir = index_dir.resolve()
-        if real_dir in seen_index_dirs:
-            continue
-        seen_index_dirs.add(real_dir)
-
-        # Calculate size of the index directory
-        total_size = 0
-        for f in index_dir.rglob("*"):
-            if f.is_file():
-                total_size += f.stat().st_size
-
-        size_str = (
-            f"{total_size / 1024:.1f} KB"
-            if total_size < 1024 * 1024
-            else f"{total_size / (1024 * 1024):.1f} MB"
-        )
-        index_entries.append(
-            {
-                "project": project_path,
-                "agents": sorted(agents) if agents else ["(current dir)"],
-                "index_dir": index_dir,
-                "size": size_str,
-            }
-        )
+    index_entries = _collect_index_entries(find_codenexus_index, get_all_indexed_projects)
 
     if not index_entries:
-        console.print(
-            "[yellow]No CodeNexus index found for any detected agent project.[/]"
-        )
+        console.print("[yellow]No CodeNexus index found for any detected agent project.[/]")
         return
-
-    # 4. Display
-    console.print("[bold]Found CodeNexus indexes:[/]\n")
-
-    table = Table(title="CodeNexus Indexes")
-    table.add_column("ID", style="cyan")
-    table.add_column("Agents", style="magenta")
-    table.add_column("Project Path", style="green")
-    table.add_column("Index Dir", style="yellow")
-    table.add_column("Size", style="blue")
-
-    # Short unique id per entry to avoid positional confusion
-    import os
 
     for i, e in enumerate(index_entries, 1):
         e["id"] = f"idx-{i}"
-        # The exact token the user must type to confirm deletion
-        e["confirm_token"] = os.path.basename(os.path.normpath(e["project"]))
-        table.add_row(
-            e["id"],
-            ", ".join(e["agents"]),
-            e["project"],
-            str(e["index_dir"]),
-            e["size"],
-        )
-    console.print(table)
+    _print_index_table(index_entries)
 
-    # Ask for selection
+    if dry_run:
+        console.print("\n[yellow]--dry-run: nothing was removed.[/]")
+        return
+
+    # Selection
     console.print("\n[bold]Options:[/]")
     console.print("  - Enter IDs separated by comma (e.g., idx-1,idx-3)")
     console.print("  - Enter 'all' to clear all")
     console.print("  - Enter 'q' to cancel")
 
-    selection = input("\nSelect indexes to clear: ").strip()
-
-    if selection.lower() == "q":
+    selection = _ask("\nSelect indexes to clear: ")
+    if selection.lower() in ("q", ""):
         console.print("[yellow]Cancelled.[/]")
         return
 
@@ -988,56 +1062,46 @@ def clear(dry_run):
         id_to_index = {e["id"]: i for i, e in enumerate(index_entries)}
         try:
             selected_indices = [id_to_index[s.strip()] for s in selection.split(",") if s.strip()]
-        except (KeyError, ValueError):
+        except KeyError:
             console.print("[red]Invalid input.[/]")
             return
 
-    # Validate indices
-    valid_indices = [i for i in selected_indices if 0 <= i < len(index_entries)]
-
+    valid_indices = sorted({i for i in selected_indices if 0 <= i < len(index_entries)})
     if not valid_indices:
         console.print("[red]No valid selections.[/]")
         return
 
-    # 5. Path-based confirmation: type the exact project dir name for each entry
+    # Confirmation — one prompt per selected entry. Tokens that could be
+    # ambiguous ('all', 'q', empty basenames from root-like paths) require
+    # typing the full project path instead of the basename.
     console.print(
         f"\n[bold red]WARNING: This will PERMANENTLY delete {len(valid_indices)} index(es).[/]"
     )
     for i in valid_indices:
         e = index_entries[i]
-        console.print(
-            f"  - [red]{e['project']}[/]  (confirm by typing: [yellow]{e['confirm_token']}[/])"
-        )
+        hint = e["hint"]
+        console.print(f"  - [red]{e['project']}[/]  (type: [yellow]{hint}[/])")
 
-    if dry_run:
-        console.print("\n[yellow]--dry-run: no files were removed.[/]")
+    confirmed: set[int] = set()
+    for i in valid_indices:
+        e = index_entries[i]
+        typed = _ask(f"Confirm deletion of {e['project']} (type '{e['hint']}', or Enter to skip): ")
+        if typed == e["hint"]:
+            confirmed.add(i)
+        else:
+            console.print(f"  [yellow]Skipped:[/] {e['project']}")
+
+    if not confirmed:
+        console.print("[yellow]Cancelled. No indexes were removed.[/]")
         return
 
-    console.print(
-        "\nTo confirm, type the project directory name for EACH selected index,"
-        "\nor 'all' to confirm every selection. Anything else cancels."
-    )
-
-    typed = input("Type to confirm: ").strip()
-    if typed.lower() == "all":
-        confirmed = set(valid_indices)
-    else:
-        confirmed = set()
-        for i in valid_indices:
-            if typed == index_entries[i]["confirm_token"]:
-                confirmed.add(i)
-        if not confirmed:
-            console.print("[yellow]Cancelled. No indexes were removed.[/]")
-            return
-
-    # Clear selected directories
     cleared = 0
-    for i in sorted(confirmed):
+    for i in confirmed:
         try:
             shutil.rmtree(index_entries[i]["index_dir"])
             console.print(f"[green]Cleared: {index_entries[i]['index_dir']}[/]")
             cleared += 1
-        except Exception as e:
+        except OSError as e:
             console.print(f"[red]Failed to clear {index_entries[i]['index_dir']}: {e}[/]")
 
     console.print(f"\n[bold green]Cleared {cleared} index(es)[/]")
