@@ -3,8 +3,6 @@
 import json
 from pathlib import Path
 
-import pytest
-
 
 def _make_index(proj: Path, home: Path):
     """Create a real CodeNexus index under `home` for `proj`."""

@@ -48,7 +48,7 @@ class ClaudeCodeParser(AgentConfigParser):
         projects = []
 
         try:
-            with open(config_path) as f:
+            with open(config_path, encoding="utf-8") as f:
                 data = json.load(f)
 
             # Check for mcpServers in various locations
@@ -107,10 +107,10 @@ class HermesParser(AgentConfigParser):
         try:
             if config_path.suffix == '.yaml':
                 import yaml
-                with open(config_path) as f:
+                with open(config_path, encoding="utf-8") as f:
                     data = yaml.safe_load(f) or {}
             else:
-                with open(config_path) as f:
+                with open(config_path, encoding="utf-8") as f:
                     data = json.load(f)
 
             # Check for mcp_servers
@@ -150,7 +150,7 @@ class CursorParser(AgentConfigParser):
         projects = []
 
         try:
-            with open(config_path) as f:
+            with open(config_path, encoding="utf-8") as f:
                 data = json.load(f)
 
             mcp_servers = data.get('mcpServers', {})
@@ -364,7 +364,7 @@ class AntigravityParser(AgentConfigParser):
     def parse(self, config_path: Path) -> list[dict]:
         projects = []
         try:
-            with open(config_path) as f:
+            with open(config_path, encoding="utf-8") as f:
                 data = json.load(f)
         except (json.JSONDecodeError, FileNotFoundError, OSError):
             return projects

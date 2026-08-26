@@ -706,8 +706,19 @@ Use CodeNexus to search and analyze code in the workspace.
                     with open(config_path) as f:
                         existing_config = json.load(f)
             except Exception as e:
-                print(f"[WARNING] Could not read {config_path}: {e}")
-                existing_config = {}
+                # An existing but unreadable config must NEVER be overwritten:
+                # falling through with {} used to replace the whole file
+                # (e.g. ~/.claude.json session state) with near-empty content.
+                print(f"[ERROR] {config_path} exists but could not be read ({e}).")
+                print("[ERROR] Aborting: fix or remove the file manually, then retry.")
+                return False
+
+        # Back up the previous content before touching anything.
+        backup_path = config_path.with_suffix(config_path.suffix + ".codenexus-backup")
+        try:
+            backup_path.write_bytes(config_path.read_bytes())
+        except OSError as e:
+            print(f"[WARNING] Could not back up {config_path}: {e}")
 
         # Merge configs
         for key, value in config.items():

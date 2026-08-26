@@ -16,6 +16,22 @@ except ImportError:
     TREE_SITTER_AVAILABLE = False
 
 
+def detect_language(file_path: Path | str) -> str | None:
+    """Map a file extension to a supported language name."""
+    ext_map = {
+        ".py": "python",
+        ".js": "javascript",
+        ".jsx": "javascript",
+        ".ts": "typescript",
+        ".tsx": "typescript",
+        ".go": "go",
+        ".rs": "rust",
+        ".java": "java",
+        ".cs": "csharp",
+    }
+    return ext_map.get(Path(file_path).suffix.lower())
+
+
 @dataclass
 class ParsePattern:
     """Pattern for extracting symbols (regex fallback)."""
@@ -125,7 +141,10 @@ class CodeParser:
             return [], []
 
         try:
-            source = file_path.read_text(encoding="utf-8", errors="ignore")
+            raw = file_path.read_bytes()
+            if raw.startswith(b"\xef\xbb\xbf"):
+                raw = raw[3:]  # UTF-8 BOM breaks first-line anchors
+            source = raw.decode("utf-8", errors="replace")
 
             # Try tree-sitter first
             if self.use_tree_sitter and language in self.parsers:
@@ -369,8 +388,25 @@ class CodeParser:
 
         call_re = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(")
 
+        # Pre-collect class names so constructors (Java/C#: ``public Foo(``
+        # inside ``class Foo``) don't emit a function node whose id collides
+        # with the class node and overwrites it.
+        class_names: set[str] = set()
+        for line in lines:
+            m = re.match(patterns.class_pattern, line.strip())
+            if m:
+                for idx in (1, 2):
+                    if m.lastindex and m.lastindex >= idx and m.group(idx):
+                        class_names.add(m.group(idx))
+                        break
+
         for i, line in enumerate(lines):
             stripped = line.strip()
+
+            # Skip obvious comments so commented-out code doesn't create
+            # phantom symbols.
+            if stripped.startswith(("#", "//", "*", "/*")):
+                continue
 
             # Check for functions
             match = re.match(patterns.function_pattern, stripped, re.MULTILINE)
@@ -379,6 +415,9 @@ class CodeParser:
                 if not name and match.lastindex >= 2:
                     name = match.group(2)
                 if name:
+                    # Constructor shadowing its class: skip to keep ids unique.
+                    if name in class_names:
+                        continue
                     node_id = name
                     sig = self._extract_function_signature_regex(lines, i)
                     end = self._find_block_end(lines, i)
@@ -407,7 +446,11 @@ class CodeParser:
             # Check for classes
             match = re.match(patterns.class_pattern, stripped, re.MULTILINE)
             if match:
-                name = match.group(1)
+                name = None
+                for idx in (1, 2):
+                    if match.lastindex and match.lastindex >= idx and match.group(idx):
+                        name = match.group(idx)
+                        break
                 if name:
                     node_id = name
                     sig = self._extract_class_signature_regex(lines, i)

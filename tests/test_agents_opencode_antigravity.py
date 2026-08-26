@@ -1,9 +1,7 @@
 """Agent integration tests: OpenCode and Antigravity (productization)."""
 
 import json
-import shutil
 import subprocess
-from pathlib import Path
 
 import pytest
 
@@ -50,7 +48,7 @@ def test_antigravity_in_registry():
 # Config generation per agent
 # --------------------------------------------------------------------------- #
 def test_opencode_mcp_config_shape(tmp_path):
-    from codenexus.wizard import AgentWizard, AgentType
+    from codenexus.wizard import AgentType, AgentWizard
 
     cfg = AgentWizard().generate_mcp_config(AgentType.OPENCODE, tmp_path)
     # OpenCode nests under `mcp` with a `command` list, not `mcpServers`.
@@ -61,7 +59,7 @@ def test_opencode_mcp_config_shape(tmp_path):
 
 
 def test_antigravity_mcp_config_shape(tmp_path):
-    from codenexus.wizard import AgentWizard, AgentType
+    from codenexus.wizard import AgentType, AgentWizard
 
     cfg = AgentWizard().generate_mcp_config(AgentType.ANTIGRAVITY, tmp_path)
     assert cfg == {
@@ -75,7 +73,7 @@ def test_antigravity_mcp_config_shape(tmp_path):
 
 
 def test_antigravity_cli_command_is_manual_injection(tmp_path):
-    from codenexus.wizard import AgentWizard, AgentType
+    from codenexus.wizard import AgentType, AgentWizard
 
     cmd = AgentWizard().generate_cli_command(AgentType.ANTIGRAVITY, tmp_path)
     # No `mcp add` subcommand -> must instruct manual config injection.
@@ -150,7 +148,6 @@ def test_openclaw_parser_finds_nested_workspace_skill(tmp_path, monkeypatch):
     not the stale default ~/.openclaw/workspace/skills path (which would cause
     the parser to read a different project than the wizard wrote)."""
     import json
-    from pathlib import Path
 
     # Fake HOME so the parser looks inside tmp_path, not the real user HOME.
     fake_home = tmp_path / "home"
@@ -195,7 +192,6 @@ def test_openclaw_parser_finds_nested_workspace_skill(tmp_path, monkeypatch):
 
 
 def test_get_all_indexed_projects_includes_new_agents(tmp_path):
-    from codenexus.agent_parser import get_all_indexed_projects
 
     cfg = tmp_path / "opencode.jsonc"
     cfg.write_text(

@@ -19,8 +19,38 @@ from .license import LicenseManager, get_license
 from .llm import LLMConfig, LocalLLM
 from .memory import SessionMemory, get_memory
 from .parser import CodeParser, create_capsule
+from .resolver import FileEntry, ImportResolver
 
 # Map file extensions to the parser language key.
+# Directories never indexed; matched against exact path parts.
+SKIP_DIRS = {
+    "node_modules",
+    "bower_components",
+    ".git",
+    "__pycache__",
+    "venv",
+    ".venv",
+    "env",
+    "dist",
+    "build",
+    "target",
+    "vendor",
+    "coverage",
+    "htmlcov",
+    "site-packages",
+    ".codenexus",
+    ".tox",
+    ".nox",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".hypothesis",
+    ".next",
+    ".idea",
+    ".vscode",
+}
+SOURCE_EXTENSIONS = (".py", ".js", ".jsx", ".ts", ".tsx", ".go", ".rs", ".java", ".cs")
+
 EXT_TO_LANGUAGE = {
     ".py": "python",
     ".js": "javascript",
@@ -211,7 +241,9 @@ class CodeNexusServer:
         elif name == "index_status":
             return await self._index_status()
         else:
-            return [TextContent(type="text", text=f"Unknown tool: {name}")]
+            # Raising lets the SDK transport surface a proper JSON-RPC error;
+            # returning text here reported unknown tools as success.
+            raise ValueError(f"Unknown tool: {name}")
 
     def _setup_tools(self):
         @self.server.list_tools()
@@ -390,6 +422,11 @@ class CodeNexusServer:
         """Index all files, respecting license language + node limits."""
         source_files = self._get_source_files()
 
+        if not incremental:
+            # Full re-index starts clean so rows from deleted or previously
+            # mis-parsed files cannot linger.
+            self.graph.clear()
+
         if incremental:
             files_to_index = []
             for file_path in source_files:
@@ -403,6 +440,9 @@ class CodeNexusServer:
             deleted_files = [k for k in self.file_cache.keys() if k not in existing_files]
             for deleted in deleted_files:
                 del self.file_cache[deleted]
+                # Purge the deleted file's nodes/edges from the graph.
+                abs_path = str((self.workspace / deleted).resolve())
+                self.graph.delete_file_nodes(abs_path)
 
             if not files_to_index:
                 print("No files changed since last index")
@@ -454,9 +494,34 @@ class CodeNexusServer:
                 total_nodes += 1
             else:
                 for edge in edges:
+                    if edge.source_id.endswith("::import"):
+                        # Pseudo-source edges are rewritten into real
+                        # module/symbol edges by the resolver below.
+                        continue
                     self.graph.add_edge(edge)
             # Track indexed file in session memory.
             self._record_file_change(str(file_path), "index", len(nodes))
+
+        # Resolve imports into real edges between module/symbol nodes so
+        # PageRank, impact analysis and dependents queries operate on a
+        # connected graph (previously every import edge was dangling).
+        if parse_results:
+            entries = [
+                FileEntry(
+                    abs_path=fp,
+                    rel_path=str(fp),
+                    language=EXT_TO_LANGUAGE.get(fp.suffix, ""),
+                    symbols={n.name: n.id for n in nds},
+                    raw_imports=[e.target_id for e in es],
+                )
+                for fp, nds, es in parse_results
+            ]
+            module_nodes, import_edges = ImportResolver(self.workspace).build(entries)
+            for mod_node in module_nodes:
+                if node_cap is None or total_nodes < node_cap:
+                    self.graph.add_node(mod_node)
+                    total_nodes += 1
+            self.graph.add_edges(import_edges)
 
         if truncated:
             print(

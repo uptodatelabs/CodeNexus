@@ -1,5 +1,6 @@
 """CLI interface for CodeNexus."""
 
+import json
 import sys
 import time
 from pathlib import Path
@@ -62,10 +63,10 @@ def index(ctx, full, workers):
 
 @main.command()
 @click.argument("query")
-@click.option("--max-tokens", "-t", default=8000, help="Max tokens for capsule")
+@click.option("--json", "as_json", is_flag=True, help="Output results as JSON")
 @click.option("--top", "-n", default=10, help="Number of results")
 @click.pass_context
-def search(ctx, query, max_tokens, top):
+def search(ctx, query, as_json, top):
     """Search for context related to a query."""
     workspace = ctx.obj["workspace"]
     db_path = workspace / ".codenexus" / "index.db"
@@ -76,6 +77,21 @@ def search(ctx, query, max_tokens, top):
 
     graph = DependencyGraph(db_path)
     nodes = graph.search_nodes(query, limit=top)
+    graph.close()
+
+    if as_json:
+        payload = [
+            {
+                "name": n.name,
+                "file": n.file_path,
+                "type": n.node_type,
+                "line": n.start_line,
+                "score": n.centrality_score,
+            }
+            for n in nodes
+        ]
+        console.print_json(json.dumps(payload))
+        return
 
     if not nodes:
         console.print(f"[yellow]No results for: {query}[/]")
@@ -151,8 +167,9 @@ def pipeline(ctx, task, max_tokens):
 
 
 @main.command()
+@click.option("--json", "as_json", is_flag=True, help="Output status as JSON")
 @click.pass_context
-def status(ctx):
+def status(ctx, as_json):
     """Show index status and statistics."""
     workspace = ctx.obj["workspace"]
     db_path = workspace / ".codenexus" / "index.db"
@@ -164,7 +181,16 @@ def status(ctx):
     graph = DependencyGraph(db_path)
     node_count = graph.conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
     edge_count = graph.conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0]
-    file_count = graph.conn.execute("SELECT COUNT(DISTINCT file_path) FROM nodes").fetchone()[0]
+    file_count = graph.conn.execute(
+        "SELECT COUNT(DISTINCT file_path) FROM nodes"
+    ).fetchone()[0]
+    graph.close()
+
+    if as_json:
+        console.print_json(
+            json.dumps({"nodes": node_count, "edges": edge_count, "files": file_count})
+        )
+        return
 
     table = Table(title="Index Status")
     table.add_column("Metric", style="cyan")

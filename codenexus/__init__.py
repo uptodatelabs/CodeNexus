@@ -1,8 +1,6 @@
 """CodeNexus: The context engine for AI coding agents."""
 
-__version__ = "1.1.40"
-__author__ = "CodeNexus Contributors"
-
+from ._version import __version__
 from .graph import DependencyGraph, Edge, Node
 from .license import LicenseManager, LicenseTier, get_license
 from .llm import LLAMA_CPP_AVAILABLE, LLMConfig, LocalLLM, get_llm, init_llm
@@ -11,7 +9,10 @@ from .parser import CodeParser
 from .server import CodeNexusServer
 from .workspace import MultiRepoWorkspace, RepoConfig, WorkspaceConfig
 
+__author__ = "CodeNexus Contributors"
+
 __all__ = [
+    "__version__",
     "DependencyGraph",
     "Node",
     "Edge",

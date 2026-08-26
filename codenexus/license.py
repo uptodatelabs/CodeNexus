@@ -1,10 +1,19 @@
-"""License management for CodeNexus Pro."""
+"""License management for CodeNexus Pro.
+
+Honest limitation: keys are structurally validated only (no cryptographic
+signature), and state lives in a local JSON file — a determined user can
+forge either. This module's real value is consistent *enforcement* of tier
+limits across the product; it is not DRM.
+"""
 
 import json
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 class LicenseTier(Enum):
@@ -24,7 +33,7 @@ class License:
     key: str
     owner: str
     expires_at: datetime | None = None
-    features: list[str] = None
+    features: list[str] | None = None
 
     def __post_init__(self):
         if self.features is None:
@@ -67,21 +76,23 @@ class LicenseManager:
 
     def _load_license(self):
         """Load license from disk."""
-        if self.config_path.exists():
-            try:
-                with open(self.config_path) as f:
-                    data = json.load(f)
-                    self._license = License(
-                        tier=LicenseTier(data.get("tier", "free")),
-                        key=data.get("key", ""),
-                        owner=data.get("owner", ""),
-                        expires_at=datetime.fromisoformat(data["expires_at"])
-                        if data.get("expires_at")
-                        else None,
-                        features=data.get("features", []),
-                    )
-            except Exception:
-                self._license = None
+        if not self.config_path.exists():
+            return
+        try:
+            with open(self.config_path, encoding="utf-8-sig") as f:
+                data = json.load(f)
+            self._license = License(
+                tier=LicenseTier(data["tier"]),
+                key=data.get("key", ""),
+                owner=data.get("owner", ""),
+                expires_at=datetime.fromisoformat(data["expires_at"])
+                if data.get("expires_at")
+                else None,
+                features=data.get("features", []),
+            )
+        except (OSError, json.JSONDecodeError, KeyError, ValueError) as e:
+            logger.warning("Could not load license file %s: %s", self.config_path, e)
+            self._license = None
 
     def _save_license(self):
         """Save license to disk."""
@@ -100,7 +111,7 @@ class LicenseManager:
             "features": self._license.features,
         }
 
-        with open(self.config_path, "w") as f:
+        with open(self.config_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
 
     def activate_license(self, license_key: str) -> bool:
@@ -133,12 +144,18 @@ class LicenseManager:
         except ValueError:
             return False
 
+        try:
+            tier_enum = LicenseTier(tier)
+        except ValueError:
+            logger.warning("Unknown tier %r in license key", tier)
+            return False
+
         # Check if expired
         if expires_at < datetime.now():
             return False
 
         self._license = License(
-            tier=LicenseTier(tier), key=license_key, owner=owner, expires_at=expires_at
+            tier=tier_enum, key=license_key, owner=owner, expires_at=expires_at
         )
 
         self._save_license()
@@ -159,6 +176,10 @@ class LicenseManager:
         """
         Check if current tier has a feature.
 
+        Only strict ``True`` counts as available on the free tier, so list /
+        string values like ``languages`` correctly read as Pro-only here.
+        Use :meth:`get_limit` for raw numeric/list values.
+
         Args:
             feature: Feature name
 
@@ -168,21 +189,20 @@ class LicenseManager:
         tier = self.get_tier()
 
         if tier == LicenseTier.FREE:
-            return self.FREE_LIMITS.get(feature, False)
-        elif tier in [LicenseTier.PRO, LicenseTier.TEAM, LicenseTier.ENTERPRISE]:
-            return self.PRO_FEATURES.get(feature, True)
+            return self.FREE_LIMITS.get(feature, False) is True
 
-        return False
+        # Fail closed on unknown features rather than silently granting them.
+        return bool(self.PRO_FEATURES.get(feature, False))
 
-    def get_limit(self, limit_name: str) -> int | None:
+    def get_limit(self, limit_name: str):
         """
-        Get a limit for the current tier.
+        Get a raw limit value for the current tier.
 
         Args:
-            limit_name: Limit name
+            limit_name: Limit name (e.g. ``max_nodes``, ``max_repos``)
 
         Returns:
-            Limit value or None for unlimited
+            The configured value; callers decide how to interpret it.
         """
         tier = self.get_tier()
 
@@ -195,7 +215,7 @@ class LicenseManager:
 
     def check_feature(self, feature: str) -> bool:
         """
-        Check feature and print message if not available.
+        Check feature and log a message if not available.
 
         Args:
             feature: Feature name
@@ -207,9 +227,14 @@ class LicenseManager:
             return True
 
         tier = self.get_tier()
-        print(f"Feature '{feature}' requires Pro license")
-        print(f"Current tier: {tier.value}")
-        print("Upgrade at: https://codenexus.dev/pricing")
+        # Library code must not print to stdout: the stdio MCP server shares
+        # that stream with JSON-RPC responses.
+        logger.warning(
+            "Feature '%s' requires Pro license (current tier: %s). "
+            "Upgrade at https://codenexus.dev/pricing",
+            feature,
+            tier.value,
+        )
         return False
 
     def get_license_info(self) -> dict:

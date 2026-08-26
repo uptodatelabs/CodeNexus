@@ -133,7 +133,7 @@ def test_license_gating_in_index(monkeypatch, tmp_path):
 def test_mcp_server_uses_engine_dispatch(sample_project):
     """The MCP transport must return real results via the shared engine."""
     from mcp import ClientSession
-    from mcp.client.stdio import stdio_client, StdioServerParameters
+    from mcp.client.stdio import StdioServerParameters, stdio_client
 
     params = StdioServerParameters(
         command="codenexus",
