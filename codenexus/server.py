@@ -7,6 +7,7 @@ methods so there is a single source of truth for behaviour.
 
 import hashlib
 import json
+import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
@@ -15,7 +16,6 @@ from mcp.server import Server
 from mcp.types import TextContent, Tool
 
 from .graph import DependencyGraph, Edge, Node
-from .license import LicenseManager, get_license
 from .llm import LLMConfig, LocalLLM
 from .memory import SessionMemory, get_memory
 from .parser import CodeParser, create_capsule
@@ -51,6 +51,8 @@ SKIP_DIRS = {
 }
 SOURCE_EXTENSIONS = (".py", ".js", ".jsx", ".ts", ".tsx", ".go", ".rs", ".java", ".cs")
 
+logger = logging.getLogger(__name__)
+
 EXT_TO_LANGUAGE = {
     ".py": "python",
     ".js": "javascript",
@@ -73,7 +75,7 @@ class CodeNexusServer:
         max_workers: int = 4,
         llm_model_path: str | None = None,
         use_llm: bool = False,
-        license_manager: LicenseManager | None = None,
+        license_manager: object | None = None,  # deprecated, ignored
     ):
         self.workspace = Path(workspace_path)
         self.db_path = self.workspace / ".codenexus" / "index.db"
@@ -84,13 +86,14 @@ class CodeNexusServer:
         self.server = Server("codenexus", version="1.1.40")
         self.max_workers = max_workers
 
-        # --- License gating (single source of truth) ---
-        self.license_mgr = license_manager or get_license()
-        self.tier = self.license_mgr.get_tier()
-        self.enabled_languages = self._resolve_languages()
-        self.max_nodes_limit = self.license_mgr.get_limit("max_nodes")
-        self.memory_enabled = self.license_mgr.has_feature("memory")
-        self.llm_enabled = bool(use_llm and self.license_mgr.has_feature("llm"))
+        # Fully open source: every feature is enabled unconditionally.
+        # (license_manager parameter is accepted for backwards compatibility
+        # and ignored.)
+        del license_manager
+        self.enabled_languages: set[str] | None = None  # all languages
+        self.max_nodes_limit = None  # unlimited
+        self.memory_enabled = True
+        self.llm_enabled = bool(use_llm)
 
         # --- LLM (only when licensed + requested) ---
         self.llm: LocalLLM | None = None
@@ -110,22 +113,9 @@ class CodeNexusServer:
 
         self._setup_tools()
 
-    # ------------------------------------------------------------------ #
-    # License helpers
-    # ------------------------------------------------------------------ #
-    def _resolve_languages(self) -> set[str] | None:
-        """Return enabled language set, or None for 'all'."""
-        raw = self.license_mgr.get_limit("languages")
-        if raw == "all" or raw is None:
-            return None
-        if isinstance(raw, (list, set, tuple)):
-            return set(raw)
-        return None
-
     def is_language_enabled(self, language: str) -> bool:
-        if self.enabled_languages is None:
-            return True
-        return language in self.enabled_languages
+        """All languages are enabled — CodeNexus is fully open source."""
+        return True
 
     # ------------------------------------------------------------------ #
     # Session memory helpers
@@ -245,6 +235,34 @@ class CodeNexusServer:
             # returning text here reported unknown tools as success.
             raise ValueError(f"Unknown tool: {name}")
 
+    # ------------------------------------------------------------------ #
+    # Query routing (single index vs federated workspace)
+    # ------------------------------------------------------------------ #
+    @property
+    def _federated(self):
+        """FederatedGraph when this workspace root has a workspace.json."""
+        if not hasattr(self, "_federated_cache"):
+            self._federated_cache = None
+            try:
+                if (self.workspace / ".codenexus" / "workspace.json").exists():
+                    from .federation import FederatedGraph
+
+                    self._federated_cache = FederatedGraph.from_workspace(self.workspace)
+                    if self._federated_cache is not None:
+                        logger.info(
+                            "Multi-repo serving enabled (%d members)",
+                            len(self._federated_cache.members),
+                        )
+            except Exception as e:  # never break single-index serving
+                logger.warning("Federation unavailable: %s", e)
+                self._federated_cache = None
+        return self._federated_cache
+
+    def _query_graph(self):
+        """The graph MCP tools should read: federated when configured."""
+        fed = self._federated
+        return fed if fed is not None else self.graph
+
     def _setup_tools(self):
         @self.server.list_tools()
         async def list_tools():
@@ -268,9 +286,10 @@ class CodeNexusServer:
         keywords = task.lower().split()
         nodes: list[Node] = []
         seen_ids: set[str] = set()
+        graph = self._query_graph()
 
         for keyword in keywords:
-            results = self.graph.search_nodes(keyword, limit=10)
+            results = graph.search_nodes(keyword, limit=10)
             for node in results:
                 if node.id not in seen_ids:
                     nodes.append(node)
@@ -330,8 +349,9 @@ class CodeNexusServer:
         keywords = query.lower().split()
         nodes: list[Node] = []
         seen_ids: set[str] = set()
+        graph = self._query_graph()
         for keyword in keywords:
-            for node in self.graph.search_nodes(keyword, limit=10):
+            for node in graph.search_nodes(keyword, limit=10):
                 if node.id not in seen_ids:
                     nodes.append(node)
                     seen_ids.add(node.id)
@@ -353,39 +373,39 @@ class CodeNexusServer:
         return [TextContent(type="text", text=json.dumps(result, indent=2, default=str))]
 
     async def _get_skeleton(self, args: dict) -> list[TextContent]:
-        file_path = args.get("file_path", "")
-        rows = self.graph.conn.execute(
-            "SELECT id, file_path, name, node_type, start_line, end_line, "
-            "content, signature, centrality_score FROM nodes WHERE file_path = ?",
-            (file_path,),
-        ).fetchall()
+        file_path = str(args.get("file_path", "")).strip()
+        nodes = self._query_graph().get_file_nodes(file_path)
 
-        if not rows:
+        if not nodes:
             return [TextContent(type="text", text=f"No nodes found for {file_path}")]
 
-        skeletons = []
-        for row in rows:
-            node = Node.from_row(row)
-            skeletons.append(f"{node.node_type} {node.name}: {node.signature}")
-
+        skeletons = [f"{n.node_type} {n.name}: {n.signature}" for n in nodes]
         result = {"skeletons": skeletons}
         return [TextContent(type="text", text=json.dumps(result, indent=2, default=str))]
 
     async def _index_status(self) -> list[TextContent]:
-        node_count = self.graph.conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
-        edge_count = self.graph.conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0]
-        file_count = self.graph.conn.execute(
-            "SELECT COUNT(DISTINCT file_path) FROM nodes"
-        ).fetchone()[0]
-
+        graph = self._query_graph()
+        if hasattr(graph, "counts"):  # FederatedGraph
+            counts = graph.counts()
+        else:
+            counts = {
+                "nodes": self.graph.conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0],
+                "edges": self.graph.conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0],
+                "files": self.graph.conn.execute(
+                    "SELECT COUNT(DISTINCT file_path) FROM nodes"
+                ).fetchone()[0],
+                "mode": "single",
+            }
         result = {
-            "nodes": node_count,
-            "edges": edge_count,
-            "files": file_count,
+            "nodes": counts["nodes"],
+            "edges": counts["edges"],
+            "files": counts["files"],
+            "mode": counts.get("mode", "single"),
             "cached_files": len(self.file_cache),
             "status": "healthy",
-            "tier": self.tier.value,
         }
+        if "repos" in counts:
+            result["repos"] = counts["repos"]
         return [TextContent(type="text", text=json.dumps(result, indent=2, default=str))]
 
     # ------------------------------------------------------------------ #
@@ -419,7 +439,7 @@ class CodeNexusServer:
             return [], []
 
     def index_workspace(self, incremental: bool = True) -> int:
-        """Index all files, respecting license language + node limits."""
+        """Index all files in the workspace."""
         source_files = self._get_source_files()
 
         if not incremental:
@@ -450,27 +470,15 @@ class CodeNexusServer:
         else:
             files_to_index = source_files
 
-        # Apply license language filter up-front so excluded languages are
-        # never parsed (cheaper + enforces tier limits).
-        allowed = [
-            f
-            for f in files_to_index
-            if self.is_language_enabled(EXT_TO_LANGUAGE.get(f.suffix, ""))
-        ]
-        skipped = len(files_to_index) - len(allowed)
-        if skipped:
-            print(
-                f"Skipped {skipped} file(s): language not enabled for tier '{self.tier.value}'"
-            )
 
-        print(f"Indexing {len(allowed)} files...")
+        print(f"Indexing {len(files_to_index)} files...")
         indexed = 0
         parse_results: list[tuple[Path, list[Node], list[Edge]]] = []
 
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             future_to_file = {
                 executor.submit(self._parse_single_file, file_path): file_path
-                for file_path in allowed
+                for file_path in files_to_index
             }
             for future in as_completed(future_to_file):
                 file_path = future_to_file[future]
@@ -481,10 +489,9 @@ class CodeNexusServer:
                 except Exception as e:
                     print(f"Error processing {file_path}: {e}")
 
-        # Enforce max_nodes limit for the current tier.
-        node_cap = self.max_nodes_limit
+        node_cap = None  # unlimited (open source)
         total_nodes = self.graph.conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
-        truncated = False
+        truncated = False  # kept for API compatibility; always False
         # Call targets may reference builtins/external symbols with no node;
         # only edges whose endpoints exist may be inserted (FK enforced).
         known_ids = {

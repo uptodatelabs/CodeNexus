@@ -419,19 +419,23 @@ def get_all_indexed_projects() -> dict[str, list[dict]]:
     return results
 
 def find_codenexus_index(project_path: str) -> Path | None:
-    """Find the CodeNexus index (.codenexus/index.db) for a project path.
+    """Find the CodeNexus store for a project path.
 
-    Handles two real-world cases where the agent config's ``-w`` path does
-    not exactly match the index root:
+    Handles three real-world cases where the agent config's ``-w`` path does
+    not exactly match an index root:
 
-    1. The path itself is the index root (``<path>/.codenexus/index.db``).
-    2. The path is an *ancestor* of the index root (e.g. config points at
+    1. The path itself is an index root (``<path>/.codenexus/index.db``).
+    2. The path is a multi-repo workspace root
+       (``<path>/.codenexus/workspace.json``) whose member DBs live in the
+       same directory — served by one MCP registration.
+    3. The path is an *ancestor* of an index root (e.g. config points at
        ``/home/user`` but the index lives in ``/home/user/project/.codenexus``):
-       walk *down* one level to find the nearest index.
+       walk *down* exactly one level to find the nearest index.
 
     Deliberately does NOT walk *up* past the given path: doing so would reach
     unrelated parent directories (e.g. the real user HOME) and match the wrong
-    index. Returns the ``index.db`` path, or ``None`` if no index is found.
+    index. Returns a path inside ``.codenexus`` (callers use its parent), or
+    ``None`` if no store is found.
     """
     path = Path(project_path).resolve()
 
@@ -440,8 +444,13 @@ def find_codenexus_index(project_path: str) -> Path | None:
     if direct.exists():
         return direct
 
-    # Case 2: path is an ancestor of the index root — walk down one level.
-    # Only descend a single level to avoid scanning huge trees unexpectedly.
+    # Case 2: multi-repo workspace root.
+    workspace_marker = path / ".codenexus" / "workspace.json"
+    if workspace_marker.exists():
+        return workspace_marker
+
+    # Case 3: path is an ancestor — walk down exactly one level to avoid
+    # scanning huge trees unexpectedly.
     for sub in sorted(path.iterdir()) if path.is_dir() else []:
         if sub.is_dir():
             candidate = sub / ".codenexus" / "index.db"

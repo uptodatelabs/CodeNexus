@@ -62,7 +62,7 @@ def test_pipeline_data_shape(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
-# 항목 2: license gating is enforced (single source of truth in server.py)
+# 항목 2: fully open source — every feature enabled unconditionally
 # --------------------------------------------------------------------------- #
 @pytest.fixture
 def cli_runner():
@@ -71,42 +71,29 @@ def cli_runner():
     return CliRunner()
 
 
-def test_free_tier_language_filter(tmp_path):
-    """FREE tier must restrict indexing to python/javascript/typescript only."""
-    from codenexus.license import LicenseManager, LicenseTier
+def test_all_languages_enabled(tmp_path):
+    """Open source: all seven languages index without any gating."""
     from codenexus.server import CodeNexusServer
 
-    # Force a FREE-tier license manager.
-    lic = LicenseManager()
-    lic._license = None  # no license file -> FREE
-
-    eng = CodeNexusServer(tmp_path, license_manager=lic)
-    assert eng.tier == LicenseTier.FREE
-    # python/js/ts enabled, go not.
-    assert eng.is_language_enabled("python")
-    assert eng.is_language_enabled("javascript")
-    assert eng.is_language_enabled("typescript")
-    assert not eng.is_language_enabled("go")
-    assert not eng.is_language_enabled("rust")
+    eng = CodeNexusServer(tmp_path)
+    for lang in ("python", "javascript", "typescript", "go", "rust", "java", "csharp"):
+        assert eng.is_language_enabled(lang)
+    assert eng.max_nodes_limit is None
+    assert eng.memory_enabled is True
 
 
-def test_memory_gate_off_for_free(tmp_path):
-    """Session memory must be disabled on FREE tier."""
-    from codenexus.license import LicenseManager
+def test_memory_enabled_by_default(tmp_path):
+    """Session memory is available to everyone."""
     from codenexus.server import CodeNexusServer
 
-    lic = LicenseManager()
-    lic._license = None
-    eng = CodeNexusServer(tmp_path, license_manager=lic)
-    assert eng.memory_enabled is False
-    assert eng.memory is None
-    # start_session is a safe no-op when memory is disabled.
-    assert eng.start_session("x") is None
+    eng = CodeNexusServer(tmp_path)
+    assert eng.memory is not None
+    session_id = eng.start_session("x")
+    assert isinstance(session_id, str) and session_id
 
 
-def test_license_gating_in_index(monkeypatch, tmp_path):
-    """Indexing skips languages disabled by the license tier."""
-    from codenexus.license import LicenseManager
+def test_indexing_has_no_language_filter(monkeypatch, tmp_path):
+    """Indexing parses every supported language."""
     from codenexus.server import CodeNexusServer
 
     proj = tmp_path / "proj"
@@ -114,17 +101,28 @@ def test_license_gating_in_index(monkeypatch, tmp_path):
     (proj / "a.py").write_text("def f():\n    return 1\n")
     (proj / "b.go").write_text("package main\nfunc g() {}\n")
 
-    lic = LicenseManager()
-    lic._license = None  # FREE -> go disabled
-    eng = CodeNexusServer(proj, license_manager=lic)
+    eng = CodeNexusServer(proj)
     count = eng.index_workspace()
-
-    # Only the python file should be parsed; .go is filtered out.
-    assert count == 1
-    nodes = eng.graph.conn.execute(
+    assert count == 2
+    go_nodes = eng.graph.conn.execute(
         "SELECT COUNT(*) FROM nodes WHERE file_path LIKE '%.go'"
     ).fetchone()[0]
-    assert nodes == 0
+    assert go_nodes > 0
+
+
+def test_workspace_accepts_multiple_repos(tmp_path):
+    """Multi-repo workspaces have no repository cap."""
+    from codenexus.workspace import MultiRepoWorkspace
+
+    ws_dir = tmp_path / "ws"
+    ws_dir.mkdir()
+    for n in ("r1", "r2", "r3"):
+        (tmp_path / n).mkdir()
+        (tmp_path / n / "m.py").write_text("def f():\n    pass\n")
+
+    ws = MultiRepoWorkspace(ws_dir)
+    for n in ("r1", "r2", "r3"):
+        assert ws.add_repo(n, tmp_path / n)
 
 
 # --------------------------------------------------------------------------- #

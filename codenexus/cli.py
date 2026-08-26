@@ -286,10 +286,10 @@ def serve(ctx):
 
     from .server import CodeNexusServer
 
-    # Construct the engine (this resolves license gating up front).
+    # Construct the engine.
     server = CodeNexusServer(workspace)
     print(
-        f"[codenexus] Tier: {server.tier.value} | "
+        f"[codenexus] "
         f"languages: {'all' if server.enabled_languages is None else ', '.join(sorted(server.enabled_languages))} | "
         f"memory: {'on' if server.memory_enabled else 'off'} | "
         f"llm: {'on' if server.llm_enabled else 'off'}",
@@ -778,98 +778,15 @@ def summary(session_id):
 
 @main.group()
 def license():
-    """License management commands."""
-    pass
+    """License information (CodeNexus is fully open source)."""
 
 
 @license.command()
 def status():
     """Show license status."""
-    from .license import get_license
-
-    lic = get_license()
-    info = lic.get_license_info()
-
-    table = Table(title="License Status")
-    table.add_column("Property", style="cyan")
-    table.add_column("Value", style="green")
-
-    table.add_row("Tier", info["tier"])
-    table.add_row("Owner", info["owner"] or "N/A")
-    table.add_row("Expires", info["expires_at"] or "Never")
-    table.add_row("Valid", "Yes" if info["is_valid"] else "No")
-
-    console.print(table)
-
-
-@license.command()
-@click.argument("license_key")
-def activate(license_key):
-    """Activate a license key."""
-    from .license import get_license
-
-    lic = get_license()
-
-    if lic.activate_license(license_key):
-        console.print("[green]License activated successfully[/]")
-        info = lic.get_license_info()
-        console.print(f"Tier: {info['tier']}")
-        console.print(f"Expires: {info['expires_at']}")
-    else:
-        console.print("[red]Failed to activate license[/]")
-        console.print("Please check your license key and try again.")
-
-
-@license.command()
-def features():
-    """Show available features."""
-    from .license import get_license
-
-    lic = get_license()
-    tier = lic.get_tier()
-
-    console.print(f"[bold]Current Tier: {tier.value}[/]")
-    console.print()
-
-    features = [
-        ("Basic parsing (3 languages)", True),
-        ("Full parsing (9 languages)", lic.has_feature("languages")),
-        ("Local LLM", lic.has_feature("llm")),
-        ("Multi-repo", lic.has_feature("multi_repo")),
-        ("Session memory", lic.has_feature("memory")),
-        ("VS Code extension", lic.has_feature("vscode_extension")),
-        ("CLI", lic.has_feature("cli")),
-        ("Priority support", lic.has_feature("priority_support")),
-    ]
-
-    table = Table(title="Features")
-    table.add_column("Feature", style="cyan")
-    table.add_column("Status", style="green")
-
-    for feature, available in features:
-        status = "Yes" if available else "No (Pro)"
-        table.add_row(feature, status)
-
-    console.print(table)
-
-
-@license.command()
-def upgrade():
-    """Show upgrade information."""
-    console.print("[bold]Upgrade to CodeNexus Pro[/]")
-    console.print()
-    console.print("Pro features:")
-    console.print("  - All 9 languages")
-    console.print("  - Local LLM support")
-    console.print("  - Multi-repo workspaces")
-    console.print("  - Session memory")
-    console.print("  - Priority support")
-    console.print()
-    console.print("Pricing:")
-    console.print("  - Monthly: $19/month")
-    console.print("  - Annual: $190/year (save 17%)")
-    console.print()
-    console.print("Purchase at: https://codenexus.dev/pricing")
+    console.print("[green]CodeNexus is fully open source (MIT) — all features are enabled.[/]")
+    console.print("No activation or tiers: parsing, memory, LLM, multi-repo and the")
+    console.print("VS Code extension are available to everyone.")
 
 
 @main.group()

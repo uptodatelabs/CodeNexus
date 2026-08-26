@@ -377,54 +377,10 @@ def test_memory_search_respects_limit(temp_dir):
 # Licensing
 # ---------------------------------------------------------------------------
 
-from codenexus.license import LicenseManager  # noqa: E402
 
 
-def test_license_has_feature_is_boolean(monkeypatch, tmp_path):
-    lic = LicenseManager()
-    monkeypatch.setattr(lic, "config_path", tmp_path / "license.json")
-    lic._license = None  # free tier
-
-    assert lic.has_feature("cli") is True
-    assert lic.has_feature("multi_repo") is False
-    assert lic.has_feature("languages") is False      # Pro-only despite non-empty free list
-    assert lic.has_feature("nonexistent_feature") is False
-
-    assert lic.activate_license("CNX-pro-acme-20991231") is True
-    assert lic.has_feature("languages") is True
-    assert lic.has_feature("unknown_future_feature") is False  # fail closed
 
 
-def test_license_rejects_malformed_keys(monkeypatch, tmp_path):
-    lic = LicenseManager()
-    monkeypatch.setattr(lic, "config_path", tmp_path / "license.json")
-    lic._license = None
-
-    assert lic.activate_license("") is False
-    assert lic.activate_license("NOPE") is False
-    assert lic.activate_license("CNX-bogus-tier-x-20991231") is False  # unknown tier
-    assert lic.activate_license("CNX-pro-acme-20200101") is False      # expired
-
-
-def test_license_gates_workspace_repos(temp_dir, monkeypatch):
-    from codenexus.workspace import MultiRepoWorkspace
-
-    lic = LicenseManager()
-    monkeypatch.setattr(lic, "config_path", temp_dir / "license.json")
-    lic._license = None
-    monkeypatch.setattr("codenexus.workspace.get_license", lambda: lic)
-
-    ws = MultiRepoWorkspace(temp_dir)
-    assert ws.add_repo("one", temp_dir) is True
-    assert ws.add_repo("two", temp_dir) is False        # free tier cap
-
-    assert lic.activate_license("CNX-pro-acme-20991231") is True
-    assert ws.add_repo("two", temp_dir) is True         # pro lifts cap
-
-
-# ---------------------------------------------------------------------------
-# Wizard config safety
-# ---------------------------------------------------------------------------
 
 def test_wizard_never_overwrites_corrupt_config(tmp_path):
     from codenexus.wizard import AgentWizard
@@ -544,3 +500,91 @@ def test_call_edges_order_independent_across_runs():
         observed.add(frozenset(calls))
         srv.graph.close()
     assert len(observed) == 1, f"call edges vary between runs: {observed}"
+
+
+# ---------------------------------------------------------------------------
+# Multi-index serving: one MCP registration, many indexes (P2-c feature)
+# ---------------------------------------------------------------------------
+
+def _make_multi_repo_workspace(root):
+    """Create a workspace.json with two indexed member repos."""
+    from codenexus.workspace import MultiRepoWorkspace
+
+    ws_dir = root / "ws"
+    ws_dir.mkdir(parents=True)
+    for n in ("alpha", "beta"):
+        repo = root / n
+        repo.mkdir()
+        (repo / f"mod_{n}.py").write_text(
+            f"def unique_symbol_{n}():\n    return '{n}'\n", encoding="utf-8"
+        )
+    ws = MultiRepoWorkspace(ws_dir)
+    assert ws.add_repo("alpha", root / "alpha")
+    assert ws.add_repo("beta", root / "beta")
+    ws.index_all()
+    return ws_dir
+
+
+def test_federated_search_merges_member_repos(temp_dir):
+    """run_pipeline over a workspace root must surface BOTH member repos."""
+    import asyncio
+    import json as _json
+
+    from codenexus.server import CodeNexusServer
+
+    ws_dir = _make_multi_repo_workspace(temp_dir)
+    srv = CodeNexusServer(ws_dir)  # auto-detects workspace.json
+
+    result = _json.loads(
+        asyncio.run(
+            srv.dispatch_tool(
+                "run_pipeline",
+                {"task": "unique_symbol_alpha unique_symbol_beta"},
+            )
+        )[0].text
+    )
+    paths = " ".join(p["path"] for p in result["pivot_files"] + result["skeletons"])
+    assert "alpha" in paths and "beta" in paths
+
+    srv.dispatch_tool_sync("index_status") if hasattr(srv, "dispatch_tool_sync") else None
+    st = _json.loads(asyncio.run(srv.dispatch_tool("index_status", {}))[0].text)
+    assert st.get("mode") == "multi-repo"
+    assert {r["alias"] for r in st["repos"]} == {"alpha", "beta"}
+
+
+def test_federated_skeleton_by_aliased_path(temp_dir):
+    import asyncio
+    import json as _json
+
+    from codenexus.server import CodeNexusServer
+
+    ws_dir = _make_multi_repo_workspace(temp_dir)
+    srv = CodeNexusServer(ws_dir)
+    sk = _json.loads(
+        asyncio.run(
+            srv.dispatch_tool("get_skeleton", {"file_path": "alpha/mod_alpha.py"})
+        )[0].text
+    )
+    assert any("unique_symbol_alpha" in s for s in sk["skeletons"])
+
+
+def test_single_project_mode_unchanged(temp_dir):
+    """No workspace.json -> classic single-index behavior."""
+    import asyncio
+    import json as _json
+
+    from codenexus.server import CodeNexusServer
+
+    (temp_dir / "only.py").write_text("def only_fn():\n    pass\n", encoding="utf-8")
+    srv = CodeNexusServer(temp_dir)
+    srv.index_workspace(incremental=True)
+    st = _json.loads(asyncio.run(srv.dispatch_tool("index_status", {}))[0].text)
+    assert st.get("mode", "single") == "single"
+
+
+def test_find_codenexus_index_detects_workspace_root(temp_dir):
+    from codenexus.agent_parser import find_codenexus_index
+
+    ws_dir = _make_multi_repo_workspace(temp_dir)
+    hit = find_codenexus_index(str(ws_dir))
+    assert hit is not None and hit.parent == ws_dir / ".codenexus"

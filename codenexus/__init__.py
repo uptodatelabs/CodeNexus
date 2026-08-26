@@ -2,7 +2,6 @@
 
 from ._version import __version__
 from .graph import DependencyGraph, Edge, Node
-from .license import LicenseManager, LicenseTier, get_license
 from .llm import LLAMA_CPP_AVAILABLE, LLMConfig, LocalLLM, get_llm, init_llm
 from .memory import Decision, DecisionType, Session, SessionMemory, get_memory
 from .parser import CodeParser
@@ -31,7 +30,4 @@ __all__ = [
     "Decision",
     "DecisionType",
     "get_memory",
-    "LicenseManager",
-    "LicenseTier",
-    "get_license",
 ]

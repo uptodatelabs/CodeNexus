@@ -1,3 +1,23 @@
+## [1.3.0] - 2026-08-26
+
+### Changed — fully open source
+- Removed the Pro/Free license system entirely: no tiers, no activation
+  keys, no node/language/repo caps. All features are available to everyone.
+  `codenexus license status` remains as an informational command; the
+  deprecated `license_manager` constructor argument is accepted and ignored.
+
+### Added — multi-index serving
+- One MCP registration can now serve many indexes. Point `-w` at a directory
+  containing `.codenexus/workspace.json` and the tools operate across every
+  registered member repo:
+  - `run_pipeline` / `get_context_capsule`: search all members, merged and
+    ranked by centrality (`codenexus/federation.py`)
+  - `index_status`: `mode: "multi-repo"` + per-repo breakdown
+  - `get_skeleton`: aliased paths (`alpha/src/app.py`)
+  - impact analysis runs within the owning repo
+- `wizard clear` now discovers multi-repo workspace roots too (walk-down
+  ancestor detection restored alongside the new workspace marker).
+
 ## [1.2.4] - 2026-08-26
 
 ### Fixed

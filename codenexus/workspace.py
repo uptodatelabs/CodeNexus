@@ -7,7 +7,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .graph import DependencyGraph
-from .license import get_license
 from .parser import CodeParser, detect_language
 from .resolver import FileEntry, ImportResolver
 from .server import SKIP_DIRS, SOURCE_EXTENSIONS
@@ -145,15 +144,6 @@ class MultiRepoWorkspace:
                 logger.warning("Repository '%s' already exists", alias)
                 return False
 
-        # Enforce tier limit on repository count
-        max_repos = get_license().get_limit("max_repos")
-        if isinstance(max_repos, int) and len(self.config.repos) >= max_repos:
-            logger.error(
-                "Free tier allows %d workspace repo(s); upgrade to Pro at "
-                "https://codenexus.dev/pricing for more.",
-                max_repos,
-            )
-            return False
 
         # Check if path exists
         if not path.exists():

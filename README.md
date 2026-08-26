@@ -524,6 +524,7 @@ codenexus wizard interactive
 - [x] Multi-repo workspace support
 - [x] VS Code extension
 - [ ] Function-level call-graph extraction beyond imports (in progress)
+- [x] Multi-index serving: one agent registration, many indexes
 
 ---
 
@@ -543,31 +544,38 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-CodeNexus uses an optional **license tier** that gates features at runtime
-(checked by `CodeNexusServer` on startup). Tiers are enforced automatically —
-no code changes needed:
+**Fully open source:** there are no tiers or activation keys. All seven
+languages, session memory, local LLM support and unlimited multi-repo
+workspaces are available to everyone.
 
-| Feature            | Free            | Pro / Team / Enterprise |
-|--------------------|-----------------|--------------------------|
-| Languages          | Python, JS, TS  | All 7 (incl. Go, Rust, Java, C#) |
-| Max indexed nodes  | 5,000           | 100,000                  |
-| Session memory     | —               | ✅                        |
-| Local LLM          | —               | ✅                        |
-| Multi-repo         | —               | ✅                        |
+### Multiple Indexes per Agent
 
-Check your tier, or activate a key:
+One MCP registration can serve many indexes: point it at a **workspace root**
+containing `.codenexus/workspace.json`.
 
 ```bash
-codenexus license status
-codenexus license activate CNX-PRO-<owner>-<YYYYMMDD>
-codenexus license features
+# 1. Build a workspace (inside the root directory)
+codenexus workspace init my-workspace
+codenexus workspace add alpha C:/code/alpha
+codenexus workspace add beta  C:/code/beta
+codenexus workspace index
+
+# 2. Register your agent against the WORKSPACE ROOT
+#    args: ["-w", "<workspace-root>", "serve"]
 ```
 
-When you run `codenexus serve`, the active tier is printed to stderr:
+Behavior once served this way:
 
-```
-[codenexus] Tier: free | languages: javascript, python, typescript | memory: off | llm: off
-```
+| Tool | Multi-index behavior |
+|------|----------------------|
+| `run_pipeline` / `get_context_capsule` | Search every member repo; results merged and ranked by centrality |
+| `index_status` | Reports `mode: "multi-repo"` plus a per-repo breakdown |
+| `get_skeleton` | Accepts aliased paths (`alpha/src/app.py`) |
+| `impact`-style queries | Run within the owning repo |
+
+Only indexed members participate; register more anytime with
+`codenexus workspace add`, re-run `codenexus workspace index`, and restart
+the MCP server.
 
 ---
 
@@ -1147,6 +1155,7 @@ codenexus wizard interactive
 - [x] 멀티 레포 워크스페이스
 - [x] VS Code 확장
 - [ ] 함수 수준 콜그래프 추출 확대 (진행 중)
+- [x] 멀티 인덱스 서빙: 에이전트 등록 하나로 여러 인덱스
 
 ---
 
@@ -1166,30 +1175,36 @@ codenexus wizard interactive
 
 이 프로젝트는 MIT 라이선스로 제공됩니다. 자세한 내용은 [LICENSE](LICENSE) 파일을 참조하세요.
 
-CodeNexus는 시작 시 `CodeNexusServer`가 확인하는 **선택적 라이선스 티어**로
-기능을 게이팅합니다. 티어 제한은 자동 적용됩니다:
+**완전 오픈소스:** 티어나 활성화 키가 없습니다. 7개 언어 전체, 세션 메모리,
+로컬 LLM, 무제한 멀티레포 워크스페이스를 모두에게 제공합니다.
 
-| 기능               | Free             | Pro / Team / Enterprise |
-|--------------------|------------------|--------------------------|
-| 언어               | Python, JS, TS   | 전체 7개 (Go, Rust, Java, C# 포함) |
-| 최대 인덱싱 노드   | 5,000            | 100,000                  |
-| 세션 메모리        | —                | ✅                        |
-| 로컬 LLM           | —                | ✅                        |
-| 멀티 레포          | —                | ✅                        |
+### 에이전트별 멀티 인덱스
 
-티어 확인 또는 키 활성화:
+MCP 등록 하나로 여러 인덱스를 사용할 수 있습니다. `.codenexus/workspace.json`이
+있는 **워크스페이스 루트**를 바라보게 하세요.
 
 ```bash
-codenexus license status
-codenexus license activate CNX-PRO-<owner>-<YYYYMMDD>
-codenexus license features
+# 1. 워크스페이스 구성 (루트 디렉토리에서)
+codenexus workspace init my-workspace
+codenexus workspace add alpha C:/code/alpha
+codenexus workspace add beta  C:/code/beta
+codenexus workspace index
+
+# 2. 에이전트를 워크스페이스 루트에 등록
+#    args: ["-w", "<워크스페이스-루트>", "serve"]
 ```
 
-`codenexus serve` 실행 시 활성 티어가 stderr에 표시됩니다:
+이렇게 서빙하면:
 
-```
-[codenexus] Tier: free | languages: javascript, python, typescript | memory: off | llm: off
-```
+| 도구 | 멀티 인덱스 동작 |
+|------|------------------|
+| `run_pipeline` / `get_context_capsule` | 모든 멤버 레포를 검색, 중앙성 순으로 병합 반환 |
+| `index_status` | `mode: "multi-repo"` 및 레포별 통계 보고 |
+| `get_skeleton` | 별칭 경로(`alpha/src/app.py`) 지원 |
+| 임팩트 조회 | 해당 노드가 속한 레포 내부에서 수행 |
+
+인덱싱된 멤버만 참여합니다. `codenexus workspace add`로 추가하고
+`codenexus workspace index` 재실행 후 MCP 서버를 재시작하면 됩니다.
 
 ---
 
