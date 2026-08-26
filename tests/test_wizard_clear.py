@@ -11,6 +11,12 @@ def _make_index(proj: Path, home: Path):
 
     srv = CodeNexusServer(proj, license_manager=None, use_llm=False)
     srv.index_workspace(incremental=False)
+    # Release sqlite handles: an open connection locks index.db and makes
+    # later shutil.rmtree fail intermittently with WinError 32.
+    if getattr(srv, "memory", None):
+        srv.memory.close()
+        srv.memory = None
+    srv.graph.close()
     return srv
 
 
