@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "codenexus-ai"
-version = "1.2.0"
+version = "1.2.1"
 description = "The context engine for AI coding agents - reduce tokens by 50-70%"
 readme = "README.md"
 license = "MIT"
@@ -29,7 +29,7 @@ classifiers = [
 ]
 dependencies = [
     "rich>=13.0",
-    "mcp>=1.0.0",
+    "mcp>=1.0.0,<2",
     "click>=8.0",
     "pyyaml>=6.0",
 ]
