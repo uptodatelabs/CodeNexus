@@ -355,3 +355,39 @@ def test_cli_setup_scope_local_writes_project_local_file(tmp_path, monkeypatch):
     assert pfile.exists(), "project config file not written via CLI"
     data = json.loads(pfile.read_text(encoding="utf-8"))
     assert data["mcpServers"]["codenexus"]["args"] == ["-w", str(proj), "serve"]
+
+
+def test_interactive_setup_per_project_mode_3(tmp_path, monkeypatch):
+    """Interactive wizard mode 3 (per-project local scope) writes the project-
+    local config file, NOT the global one — independent per-project index.
+
+    Regresses the gap where the interactive wizard only offered global (mode 1)
+    and federated (mode 2), so the --scope local feature was unreachable from
+    `codenexus wizard interactive`.
+    """
+    at = _agent_type("cursor")
+    gpath = _stub_home_for(monkeypatch, tmp_path, at)
+    from codenexus.wizard import AgentWizard
+
+    proj = _make_repo(tmp_path, "alpha", "alpha_symbol")
+    answers = iter(
+        [
+            "1",          # select first detected agent (cursor, monkeypatched)
+            "3",          # per-project (local scope) mode
+            str(proj),    # project path
+            "y",          # apply
+        ]
+    )
+    monkeypatch.setattr("builtins.input", lambda *a, **k: next(answers))
+
+    wiz = AgentWizard()
+    monkeypatch.setattr(wiz, "detect_installed_agents", lambda: [at])
+    wiz.interactive_setup()
+
+    # Project-local file written with the codenexus entry.
+    pfile = proj / ".cursor" / "mcp.json"
+    assert pfile.exists(), "interactive mode 3 must write the project-local config file"
+    data = json.loads(pfile.read_text(encoding="utf-8"))
+    assert data["mcpServers"]["codenexus"]["args"] == ["-w", str(proj), "serve"]
+    # The GLOBAL config must NOT have been written — mode 3 is per-project, not global.
+    assert not gpath.exists(), "interactive mode 3 must not write the global config"

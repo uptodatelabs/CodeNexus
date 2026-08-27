@@ -25,6 +25,11 @@
   public docs) — return False with a clear reason instead of a broken write.
   The default `setup` (no `--scope`) keeps the existing user-scope behavior, so
   the flag is additive and non-breaking.
+- **Interactive wizard mode 3.** `codenexus wizard interactive` now offers a
+  third mode — *Per-project local scope* — so the `--scope local` feature is
+  reachable from the interactive flow, not only the CLI flag. Mode 1 is now
+  labelled "global index — applies to every project" to make the scope
+  distinction explicit.
 
 ### Fixed
 - **Zed MCP key.** `generate_mcp_config` returned `{"mcpServers": ...}` for Zed,

@@ -623,15 +623,19 @@ class AgentWizard:
 
         print(
             "\nSetup mode:\n"
-            "  1) Single project (one index)\n"
+            "  1) Single project (one global index — applies to every project)\n"
             "  2) Multi-repo workspace (multiple indexes via ONE agent registration)\n"
+            "  3) Per-project local scope (independent index for THIS project only)\n"
         )
         mode = self._ask_input("Select mode", "1")
         if mode == "2":
             self._interactive_multi_setup(selected_agent)
             return
+        if mode == "3":
+            self._interactive_per_project_setup(selected_agent)
+            return
 
-        # Mode 1: single project (existing behaviour)
+        # Mode 1: single project (existing behaviour — global/user-scope)
         project_path = self._ask_input("Project path", str(self.workspace))
 
         # Show setup guide
@@ -691,6 +695,40 @@ class AgentWizard:
                     f"\n[SUCCESS] Multi-repo workspace configured for {info.name}!\n"
                     f"  {len(repos)} repo(s) served via: codenexus -w "
                     f"{workspace_root} serve"
+                )
+            else:
+                print("\n[ERROR] Configuration failed. See messages above.")
+        else:
+            print("\n[INFO] Configuration not applied. Use the commands above manually.")
+
+    def _interactive_per_project_setup(self, agent_type):
+        """Interactive flow for an independent per-project (local-scope) index.
+
+        Writes a project-local MCP config file (or Claude Code's central
+        ``projects`` map) so the index loads ONLY inside that project — run it
+        once per project (A, B, ...) for fully separate, non-mixing indexes.
+        """
+        info = self.get_agent_info(agent_type)
+        print(f"\n[INFO] Configuring {info.name} with a per-project (local-scope) index.")
+        print(
+            "[INFO] This writes a project-local config so the index loads only "
+            "inside THIS project. Run once per project for independent indexes."
+        )
+
+        project_path = self._ask_input("Project path", str(self.workspace))
+        project_path = Path(project_path).expanduser().resolve()
+
+        self.print_setup_guide(agent_type, project_path)
+
+        apply = self._ask_input(
+            "Apply configuration and index project? (y/n)", "n"
+        ).lower()
+        if apply in ("y", "yes"):
+            ok = self.apply_config_project(agent_type, project_path)
+            if ok:
+                print(
+                    f"\n[SUCCESS] Per-project index configured for {info.name}!\n"
+                    f"  The index loads only when {info.name} opens: {project_path}"
                 )
             else:
                 print("\n[ERROR] Configuration failed. See messages above.")

@@ -512,7 +512,12 @@ codenexus wizard setup-workspace claude \
 codenexus wizard interactive
 ```
 
-The wizard offers a mode prompt: **1 = single repo** (the existing flow), **2 = multi-repo**. Choose `2`, then supply a workspace root and repeatable repo path/alias pairs (empty path to finish).
+The wizard offers a mode prompt:
+- **1 = Single project** — one global index that applies to *every* project (the original flow).
+- **2 = Multi-repo workspace** — many repos served via one agent registration (cross-repo context).
+- **3 = Per-project local scope** — an independent index for THIS project only (run once per project for fully separate, non-mixing indexes; see [Independent Per-Project Indexes](#independent-per-project-indexes) below).
+
+Choose `2` for a workspace root + repeatable repo path/alias pairs (empty path to finish). Choose `3` and supply the project path for a per-project index.
 
 **Append more repos later:** re-run the same `setup-workspace` command with the same `-w` root and new `--repo` entries — existing members are kept, new ones are added.
 
@@ -1202,7 +1207,12 @@ codenexus wizard setup-workspace claude \
 codenexus wizard interactive
 ```
 
-마법사가 모드 프롬프트를 제공합니다: **1 = 단일 레포**(기존 흐름), **2 = 멀티-repo**. `2`를 선택한 뒤 워크스페이스 루트와 반복 가능한 레포 경로/별칭 쌍을 입력합니다(빈 경로로 종료).
+마법사가 모드 프롬프트를 제공합니다:
+- **1 = 단일 프로젝트** — 모든 프로젝트에 적용되는 전역 인덱스 1개(기존 흐름).
+- **2 = 멀티-repo 워크스페이스** — 1개 에이전트 등록으로 여러 레포 서빙(교차-repo 문맥).
+- **3 = 프로젝트별 로컬 스코프** — 이 프로젝트만의 독립 인덱스(프로젝트마다 한 번 실행해 완전 분리된 비-혼합 인덱스; 아래 [프로젝트별 독립 인덱스](#프로젝트별-독립-인덱스) 참조).
+
+`2`를 선택하면 워크스페이스 루트와 반복 가능한 레포 경로/별칭 쌍을 입력합니다(빈 경로로 종료). `3`을 선택하면 프로젝트 경로를 입력해 프로젝트별 인덱스를 만듭니다.
 
 **나중에 레포 추가:** 동일한 `-w` 루트로 같은 `setup-workspace` 명령을 새 `--repo` 항목과 함께 다시 실행하면 — 기존 멤버는 유지되고 새 레포만 추가됩니다.
 
