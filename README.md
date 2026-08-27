@@ -516,6 +516,36 @@ The wizard offers a mode prompt: **1 = single repo** (the existing flow), **2 = 
 
 **Append more repos later:** re-run the same `setup-workspace` command with the same `-w` root and new `--repo` entries — existing members are kept, new ones are added.
 
+### Independent Per-Project Indexes (Claude Code)
+
+The federated `setup-workspace` above serves many repos through **one** MCP
+registration — handy for cross-repo context, but the indexes share a serving
+session. If you instead want **fully separate** indexes that load only inside a
+given project (e.g. you have projects A and B and never want their context to
+mix), register each one with the `--scope local` flag:
+
+```bash
+codenexus wizard setup claude --scope local --project ~/code/alpha
+codenexus wizard setup claude --scope local --project ~/code/beta
+```
+
+- Each command writes a **local-scope** entry in `~/.claude.json` under
+  `projects[<dir>].mcpServers.codenexus` → `codenexus -w <dir> serve`.
+- The index for project A loads **only** when Claude Code runs inside `~/code/alpha`;
+  project B's index loads only inside `~/code/beta`. They never share context.
+- Other `projects` entries and unrelated keys in `~/.claude.json` are preserved;
+  the file is backed up before each write.
+- If a user-scope (global) `codenexus` entry already exists at the top-level
+  `mcpServers`, the wizard warns — that global entry applies to every project
+  and would shadow the per-project one, so remove it (e.g.
+  `codenexus wizard clear` or edit the file) for the per-project indexes to take
+  effect independently.
+
+> Per-project local scope is **Claude Code-specific** (it relies on Claude Code's
+> `projects` map in `~/.claude.json`). Other agents don't have an equivalent
+> per-project mechanism wired here; for them, use the default `setup` (global)
+> or the federated `setup-workspace`.
+
 ### Clear Index Data
 
 ```bash
@@ -1162,6 +1192,32 @@ codenexus wizard interactive
 마법사가 모드 프롬프트를 제공합니다: **1 = 단일 레포**(기존 흐름), **2 = 멀티-repo**. `2`를 선택한 뒤 워크스페이스 루트와 반복 가능한 레포 경로/별칭 쌍을 입력합니다(빈 경로로 종료).
 
 **나중에 레포 추가:** 동일한 `-w` 루트로 같은 `setup-workspace` 명령을 새 `--repo` 항목과 함께 다시 실행하면 — 기존 멤버는 유지되고 새 레포만 추가됩니다.
+
+### 프로젝트별 독립 인덱스 (Claude Code)
+
+위의 `setup-workspace` 연동 방식은 **하나의** MCP 등록으로 여러 레포를 서빙합니다 — 레포 간 문맥을 함께 쓸 수 있어 편리하지만, 인덱스가 하나의 서빙 세션을 공유합니다. 반면 프로젝트별로 **완전히 분리된** 인덱스, 즉 해당 프로젝트 안에서 Claude Code를 실행할 때만 로드되는 인덱스를 원한다면(예: A, B 프로젝트가 있고 문맥이 섞이는 것을 원치 않을 때) `--scope local` 플래그로 각각 등록합니다:
+
+```bash
+codenexus wizard setup claude --scope local --project ~/code/alpha
+codenexus wizard setup claude --scope local --project ~/code/beta
+```
+
+- 각 명령은 `~/.claude.json`의 `projects[<dir>].mcpServers.codenexus` →
+  `codenexus -w <dir> serve`에 **로컬 스코프** 항목을 작성합니다.
+- 프로젝트 A의 인덱스는 Claude Code가 `~/code/alpha` 안에서 실행될 때 **만**
+  로드되고, 프로젝트 B의 인덱스는 `~/code/beta` 안에서만 로드됩니다. 문맥이
+  섞이지 않습니다.
+- `~/.claude.json`의 다른 `projects` 항목과 관련 없는 키는 보존되며, 쓰기 전에
+  파일이 백업됩니다.
+- 최상위 `mcpServers`에 사용자 스코프(전역) `codenexus` 항목이 이미 있으면
+  마법사가 경고합니다 — 전역 항목은 모든 프로젝트에 적용되어 프로젝트별
+  항목을 가리므로, 프로젝트별 인덱스가 독립적으로 동작하려면
+  `codenexus wizard clear` 또는 파일 직접 수정으로 제거하세요.
+
+> 프로젝트별 로컬 스코프는 **Claude Code 전용**입니다(`~/.claude.json`의
+> `projects` 맵에 의존). 다른 에이전트는 여기서 연결한 동등한 프로젝트별
+> 메커니즘이 없으므로, 기본 `setup`(전역) 또는 연동 `setup-workspace`를
+> 사용하세요.
 
 ### 인덱스 삭제
 

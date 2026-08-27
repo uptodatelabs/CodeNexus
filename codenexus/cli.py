@@ -825,8 +825,23 @@ def list_cmd():
 @wizard.command()
 @click.argument("agent_name")
 @click.option("--project", "-p", default=".", help="Project path")
-def setup(agent_name, project):
-    """Setup a specific AI agent."""
+@click.option(
+    "--scope",
+    type=click.Choice(["local"], case_sensitive=False),
+    default=None,
+    help="Registration scope. 'local' = Claude Code per-project entry "
+    "(projects[<dir>].mcpServers) — an independent index that loads only in "
+    "that project. Omit for the default user-scope (global) registration.",
+)
+def setup(agent_name, project, scope):
+    """Setup a specific AI agent.
+
+    Register codenexus with an agent. By default this writes a user-scope
+    (global) entry that applies to every project. Pass ``--scope local`` to
+    register a per-project (local-scope) entry for Claude Code instead — an
+    independent index that loads only when the agent runs inside that project.
+    Run it once per project (A, B, ...) to get separate, non-mixing indexes.
+    """
     from .wizard import AgentWizard, get_agent_by_name
 
     agent_type = get_agent_by_name(agent_name)
@@ -842,7 +857,11 @@ def setup(agent_name, project):
     apply = input("\nApply configuration and index project? (y/n): ").strip().lower()
     if apply == "y" or apply == "yes":
         console.print("\n[yellow]Applying configuration...[/]")
-        success = wiz.apply_config(agent_type, Path(project).resolve())
+        project_path = Path(project).resolve()
+        if scope == "local":
+            success = wiz.apply_config_project(agent_type, project_path)
+        else:
+            success = wiz.apply_config(agent_type, project_path)
         if success:
             console.print("[green]Configuration applied and project indexed![/]")
         else:

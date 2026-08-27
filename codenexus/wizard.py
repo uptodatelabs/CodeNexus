@@ -646,6 +646,109 @@ class AgentWizard:
             self._auto_index(project_path)
         return result
 
+    def apply_config_project(self, agent_type, project_path):
+        """Register codenexus scoped to ONE project (independent per-project index).
+
+        For Claude Code this writes a **local-scope** entry in ``~/.claude.json``:
+        ``projects[<project_dir>].mcpServers.codenexus`` pointing at
+        ``-w <project_dir> serve``. The server then loads only when Claude Code
+        runs inside that project — so registering A and B separately gives two
+        independent indexes that never mix context (unlike the federated
+        multi-repo workspace, which serves many repos through one registration).
+
+        Other agents have agent-specific per-project mechanisms that are not
+        handled here; for them this returns False with a clear message and the
+        user should fall back to the global ``apply_config`` flow.
+
+        Args:
+            agent_type: the agent to configure (Claude Code for local scope).
+            project_path: the project directory the index is scoped to.
+
+        Returns:
+            True if the local-scope entry was written (and the project indexed).
+        """
+        info = self.get_agent_info(agent_type)
+        if not info:
+            return False
+
+        if agent_type != AgentType.CLAUDE_CODE:
+            print(
+                f"[INFO] Per-project (local-scope) registration is currently "
+                f"supported for Claude Code only. For {info.name}, use "
+                f"`codenexus wizard setup {agent_type.value}` (global) or the "
+                f"agent's own project-scoped config file."
+            )
+            return False
+
+        project_path = Path(project_path).expanduser().resolve()
+        if not project_path.is_dir():
+            print(f"[ERROR] Project directory does not exist: {project_path}")
+            return False
+
+        config_path = Path(info.config_file).expanduser()
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Load existing config (UTF-8 — agent config files carry non-ASCII
+        # session state; see the cp949 fix in _apply_mcp_config).
+        existing_config = {}
+        if config_path.exists():
+            try:
+                with open(config_path, encoding="utf-8") as f:
+                    existing_config = json.load(f) or {}
+            except Exception as e:
+                print(f"[ERROR] {config_path} exists but could not be read ({e}).")
+                print("[ERROR] Aborting: fix or remove the file manually, then retry.")
+                return False
+
+        # A top-level (user-scope) codenexus applies to EVERY project and would
+        # shadow the per-project entry, defeating independence. Warn loudly but
+        # do not auto-delete the user's config.
+        global_cn = (existing_config.get("mcpServers") or {}).get("codenexus")
+        if global_cn is not None:
+            print(
+                "[WARNING] A user-scope (global) codenexus entry already exists in "
+                f"{config_path} (top-level mcpServers.codenexus -> {global_cn.get('args')})."
+            )
+            print(
+                "[WARNING] That entry applies to every project and will shadow this "
+                "per-project one. Remove it (e.g. `codenexus wizard clear` or edit the "
+                "file) for per-project indexes to take effect independently."
+            )
+
+        # Merge into the projects map without touching anything else.
+        projects = existing_config.setdefault("projects", {})
+        project_entry = projects.setdefault(str(project_path), {})
+        mcp = project_entry.setdefault("mcpServers", {})
+        mcp["codenexus"] = {
+            "command": "codenexus",
+            "args": ["-w", str(project_path), "serve"],
+        }
+
+        # Back up before writing.
+        if config_path.exists():
+            backup = config_path.with_suffix(config_path.suffix + ".codenexus-backup")
+            try:
+                backup.write_bytes(config_path.read_bytes())
+            except OSError as e:
+                print(f"[WARNING] Could not back up {config_path}: {e}")
+
+        try:
+            with open(config_path, "w", encoding="utf-8") as f:
+                json.dump(existing_config, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            print(f"[ERROR] Could not write {config_path}: {e}")
+            return False
+
+        print(f"[SUCCESS] Registered local-scope codenexus for project: {project_path}")
+        print(f"  Updated {config_path} -> projects[{str(project_path)}].mcpServers.codenexus")
+        print(
+            "  This index loads ONLY when Claude Code runs inside this project; "
+            "register other projects separately for independent indexes."
+        )
+
+        self._auto_index(project_path)
+        return True
+
     def _write_agent_config(self, agent_type, project_path):
         """Write the MCP/skill config for one agent pointing at ``project_path``.
 

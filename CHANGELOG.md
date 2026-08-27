@@ -1,5 +1,22 @@
 ## [1.3.3] - 2026-08-27
 
+### Added — per-project (local-scope) registration
+- `codenexus wizard setup <agent> --scope local -p <project>` registers an
+  **independent per-project index** for Claude Code, written to the `projects`
+  map in `~/.claude.json` (`projects[<dir>].mcpServers.codenexus` →
+  `codenexus -w <dir> serve`). The index loads only when Claude Code runs inside
+  that project, so registering A and B separately gives two non-mixing indexes.
+  This complements the federated multi-repo workspace (1.3.1), which serves many
+  repos through one registration; use `--scope local` when you want projects to
+  stay fully separate.
+- `wizard.apply_config_project()` is the local-scope engine: it preserves other
+  `projects` entries and unrelated top-level keys, backs up the config file before
+  writing, and warns loudly if a user-scope (global) `codenexus` entry would
+  shadow the per-project one. Non-Claude-Code agents get a clear "not supported"
+  message instead of a broken write (per-project local scope is Claude
+  Code-specific). The default `setup` (no `--scope`) keeps the existing
+  user-scope behavior, so the flag is additive and non-breaking.
+
 ### Fixed — wizard
 - **Interactive multi-repo empty-path trap.** The first repo prompt read
   "Add repositories (empty path to finish):", but pressing Enter with zero
