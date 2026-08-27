@@ -1,3 +1,16 @@
+## [1.3.4] - 2026-08-27
+
+### Added — interactive wizard mode 3
+- `codenexus wizard interactive` now offers a third mode — **Per-project local
+  scope** — so the `--scope local` feature (added in 1.3.3) is reachable from the
+  interactive flow, not only the `wizard setup <agent> --scope local -p <project>`
+  CLI flag. Mode 3 calls `apply_config_project`, so it works for all 8 supported
+  agents (Claude Code, Cursor, Copilot, Zed, Codex, OpenCode, Antigravity,
+  Continue). Mode 1 is now labelled "global index — applies to every project" to
+  make the scope distinction explicit.
+- README (EN/KO) gained a three-registration-scope summary (global / federated
+  multi-repo / per-project local scope) cross-linked from the setup sections.
+
 ## [1.3.3] - 2026-08-27
 
 ### Added — per-project (local-scope) registration

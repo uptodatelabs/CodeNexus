@@ -484,6 +484,11 @@ codenexus wizard setup antigravity
 
 **Note:** Setup will automatically index your project after configuration.
 
+> **Three registration scopes** (all via `wizard setup`, or modes 1/2/3 in `wizard interactive`):
+> - **Global** (default, no flag) — one entry in the agent's global config; applies to *every* project. The commands above use this.
+> - **Federated multi-repo** — `wizard setup-workspace <agent> -w <root> --repo ...` (mode 2); one registration serves many repos. See [Register Multiple Repos with One Agent](#register-multiple-repos-with-one-agent).
+> - **Per-project local scope** — `wizard setup <agent> --scope local -p <project>` (mode 3); an independent index for one project only. See [Independent Per-Project Indexes](#independent-per-project-indexes).
+
 > **Agent-specific notes**
 > - **OpenCode** is configured via its CLI (`opencode mcp add codenexus -- codenexus -w <project> serve`), which writes `~/.config/opencode/opencode.jsonc` (JSON5). CodeNexus reads this back automatically.
 > - **Antigravity** has no `mcp add` CLI subcommand, so CodeNexus injects the server block into `~/.gemini/config/mcp_config.json` (or your workspace `.agents/mcp_config.json`). After applying, reload via `/mcp` in the Antigravity CLI/IDE.
@@ -1178,6 +1183,11 @@ codenexus wizard setup antigravity
 ```
 
 **참고:** 설정 후 자동으로 프로젝트를 인덱싱합니다.
+
+> **세 가지 등록 스코프** (모두 `wizard setup` 또는 `wizard interactive`의 모드 1/2/3):
+> - **전역**(기본, 플래그 없음) — 에이전트 전역 config에 항목 1개; *모든* 프로젝트에 적용. 위 명령들이 이에 해당.
+> - **연동 멀티-repo** — `wizard setup-workspace <agent> -w <root> --repo ...`(모드 2); 1개 등록으로 여러 레포 서빙. [하나의 에이전트에 여러 레포 등록](#하나의-에이전트에-여러-레포-등록) 참조.
+> - **프로젝트별 로컬 스코프** — `wizard setup <agent> --scope local -p <project>`(모드 3); 한 프로젝트만의 독립 인덱스. [프로젝트별 독립 인덱스](#프로젝트별-독립-인덱스) 참조.
 
 > **에이전트별 참고 사항**
 > - **OpenCode**는 CLI로 구성합니다(`opencode mcp add codenexus -- codenexus -w <project> serve`) — `~/.config/opencode/opencode.jsonc`(JSON5)에 기록되며 CodeNexus가 자동으로 읽어 들입니다.
