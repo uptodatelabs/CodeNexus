@@ -516,35 +516,48 @@ The wizard offers a mode prompt: **1 = single repo** (the existing flow), **2 = 
 
 **Append more repos later:** re-run the same `setup-workspace` command with the same `-w` root and new `--repo` entries — existing members are kept, new ones are added.
 
-### Independent Per-Project Indexes (Claude Code)
+### Independent Per-Project Indexes
 
 The federated `setup-workspace` above serves many repos through **one** MCP
 registration — handy for cross-repo context, but the indexes share a serving
 session. If you instead want **fully separate** indexes that load only inside a
 given project (e.g. you have projects A and B and never want their context to
-mix), register each one with the `--scope local` flag:
+mix), register each one with the `--scope local` flag — run it once per project:
 
 ```bash
 codenexus wizard setup claude --scope local --project ~/code/alpha
 codenexus wizard setup claude --scope local --project ~/code/beta
 ```
 
-- Each command writes a **local-scope** entry in `~/.claude.json` under
-  `projects[<dir>].mcpServers.codenexus` → `codenexus -w <dir> serve`.
-- The index for project A loads **only** when Claude Code runs inside `~/code/alpha`;
-  project B's index loads only inside `~/code/beta`. They never share context.
-- Other `projects` entries and unrelated keys in `~/.claude.json` are preserved;
-  the file is backed up before each write.
-- If a user-scope (global) `codenexus` entry already exists at the top-level
-  `mcpServers`, the wizard warns — that global entry applies to every project
-  and would shadow the per-project one, so remove it (e.g.
-  `codenexus wizard clear` or edit the file) for the per-project indexes to take
-  effect independently.
+The same flag works for every supported agent — `claude`, `cursor`, `copilot`,
+`zed`, `codex`, `opencode`, `antigravity`, `continue`. The wizard picks the right
+per-project mechanism for each:
 
-> Per-project local scope is **Claude Code-specific** (it relies on Claude Code's
-> `projects` map in `~/.claude.json`). Other agents don't have an equivalent
-> per-project mechanism wired here; for them, use the default `setup` (global)
-> or the federated `setup-workspace`.
+| Agent | Per-project config file | Notes |
+|---|---|---|
+| Claude Code | `~/.claude.json` → `projects[<dir>].mcpServers` | central map; private to you |
+| Cursor | `<project>/.cursor/mcp.json` | VCS-shareable |
+| GitHub Copilot | `<project>/.vscode/mcp.json` | VCS-shareable |
+| Zed | `<project>/.zed/settings.json` | loaded after worktree trust |
+| Codex | `<project>/.codex/config.toml` | trusted projects only |
+| OpenCode | `<project>/opencode.json` (repo root) | merges with global |
+| Antigravity | `<project>/.agents/mcp_config.json` | |
+| Continue.dev | `<project>/.continue/mcpServers/codenexus.json` | auto-discovered |
+
+- The index for project A loads **only** when the agent opens `~/code/alpha`;
+  project B's index loads only inside `~/code/beta`. They never share context.
+- Existing entries and unrelated keys are preserved; the file is backed up
+  before each write.
+- If a global (user-scope) `codenexus` entry already exists, the wizard warns —
+  it applies to every project and would shadow the per-project one, so remove it
+  (e.g. `codenexus wizard clear` or edit the file) for the per-project indexes to
+  take effect independently.
+
+> **Not supported for per-project scope** (no documented project-scoped MCP
+> config): **Windsurf** (global-only), **Augment** (MCP is GUI-managed),
+> **OpenClaw** (skills are global to the workspace), **Hermes** (no public
+> per-project mechanism). For those, use the default `setup` (global) or the
+> federated `setup-workspace`.
 
 ### Clear Index Data
 
@@ -1193,31 +1206,42 @@ codenexus wizard interactive
 
 **나중에 레포 추가:** 동일한 `-w` 루트로 같은 `setup-workspace` 명령을 새 `--repo` 항목과 함께 다시 실행하면 — 기존 멤버는 유지되고 새 레포만 추가됩니다.
 
-### 프로젝트별 독립 인덱스 (Claude Code)
+### 프로젝트별 독립 인덱스
 
-위의 `setup-workspace` 연동 방식은 **하나의** MCP 등록으로 여러 레포를 서빙합니다 — 레포 간 문맥을 함께 쓸 수 있어 편리하지만, 인덱스가 하나의 서빙 세션을 공유합니다. 반면 프로젝트별로 **완전히 분리된** 인덱스, 즉 해당 프로젝트 안에서 Claude Code를 실행할 때만 로드되는 인덱스를 원한다면(예: A, B 프로젝트가 있고 문맥이 섞이는 것을 원치 않을 때) `--scope local` 플래그로 각각 등록합니다:
+위의 `setup-workspace` 연동 방식은 **하나의** MCP 등록으로 여러 레포를 서빙합니다 — 레포 간 문맥을 함께 쓸 수 있어 편리하지만, 인덱스가 하나의 서빙 세션을 공유합니다. 반면 프로젝트별로 **완전히 분리된** 인덱스, 즉 해당 프로젝트 안에서 에이전트를 실행할 때만 로드되는 인덱스를 원한다면(예: A, B 프로젝트가 있고 문맥이 섞이는 것을 원치 않을 때) `--scope local` 플래그로 각각 등록합니다 — 프로젝트마다 한 번씩 실행:
 
 ```bash
 codenexus wizard setup claude --scope local --project ~/code/alpha
 codenexus wizard setup claude --scope local --project ~/code/beta
 ```
 
-- 각 명령은 `~/.claude.json`의 `projects[<dir>].mcpServers.codenexus` →
-  `codenexus -w <dir> serve`에 **로컬 스코프** 항목을 작성합니다.
-- 프로젝트 A의 인덱스는 Claude Code가 `~/code/alpha` 안에서 실행될 때 **만**
-  로드되고, 프로젝트 B의 인덱스는 `~/code/beta` 안에서만 로드됩니다. 문맥이
-  섞이지 않습니다.
-- `~/.claude.json`의 다른 `projects` 항목과 관련 없는 키는 보존되며, 쓰기 전에
-  파일이 백업됩니다.
-- 최상위 `mcpServers`에 사용자 스코프(전역) `codenexus` 항목이 이미 있으면
-  마법사가 경고합니다 — 전역 항목은 모든 프로젝트에 적용되어 프로젝트별
-  항목을 가리므로, 프로젝트별 인덱스가 독립적으로 동작하려면
+같은 플래그가 모든 지원 에이전트에 동작합니다 — `claude`, `cursor`, `copilot`,
+`zed`, `codex`, `opencode`, `antigravity`, `continue`. 마법사가 각 에이전트에
+맞는 프로젝트별 메커니즘을 선택합니다:
+
+| 에이전트 | 프로젝트별 config 파일 | 비고 |
+|---|---|---|
+| Claude Code | `~/.claude.json` → `projects[<dir>].mcpServers` | 중앙 맵; 사용자에게 비공개 |
+| Cursor | `<프로젝트>/.cursor/mcp.json` | VCS 공유 가능 |
+| GitHub Copilot | `<프로젝트>/.vscode/mcp.json` | VCS 공유 가능 |
+| Zed | `<프로젝트>/.zed/settings.json` | worktree 신뢰 후 로드 |
+| Codex | `<프로젝트>/.codex/config.toml` | 신뢰된 프로젝트만 |
+| OpenCode | `<프로젝트>/opencode.json` (루트) | 전역과 병합 |
+| Antigravity | `<프로젝트>/.agents/mcp_config.json` | |
+| Continue.dev | `<프로젝트>/.continue/mcpServers/codenexus.json` | 자동 발견 |
+
+- 프로젝트 A의 인덱스는 에이전트가 `~/code/alpha`를 열 때 **만** 로드되고,
+  프로젝트 B의 인덱스는 `~/code/beta` 안에서만 로드됩니다. 문맥이 섞이지
+  않습니다.
+- 기존 항목과 관련 없는 키는 보존되며, 쓰기 전에 파일이 백업됩니다.
+- 전역(사용자 스코프) `codenexus` 항목이 이미 있으면 마법사가 경고합니다 —
+  전역 항목은 모든 프로젝트에 적용되어 프로젝트별 항목을 가리므로,
   `codenexus wizard clear` 또는 파일 직접 수정으로 제거하세요.
 
-> 프로젝트별 로컬 스코프는 **Claude Code 전용**입니다(`~/.claude.json`의
-> `projects` 맵에 의존). 다른 에이전트는 여기서 연결한 동등한 프로젝트별
-> 메커니즘이 없으므로, 기본 `setup`(전역) 또는 연동 `setup-workspace`를
-> 사용하세요.
+> **프로젝트별 스코프 미지원** (문서화된 프로젝트 단위 MCP config 없음):
+> **Windsurf**(전역 전용), **Augment**(MCP는 GUI 관리), **OpenClaw**(스킬은
+> 워크스페이스에 전역), **Hermes**(공개된 프로젝트별 메커니즘 없음). 이들은
+> 기본 `setup`(전역) 또는 연동 `setup-workspace`를 사용하세요.
 
 ### 인덱스 삭제
 

@@ -329,7 +329,7 @@ def test_agent_mcp_config_keys():
         AgentType.CURSOR: "mcpServers",
         AgentType.WINDSURF: "mcpServers",
         AgentType.COPILOT: "mcpServers",
-        AgentType.ZED: "mcpServers",
+        AgentType.ZED: "context_servers",
         AgentType.CONTINUE: "mcpServers",
         AgentType.AUGMENT: "mcpServers",
         AgentType.HERMES: "mcp_servers",

@@ -74,6 +74,34 @@ def _load_jsonc(config_path: Path) -> dict:
             return {}
 
 
+def _read_config_file(config_path: Path) -> dict:
+    """Format-aware read of an agent config file (json/jsonc/yaml/toml).
+
+    Returns an empty dict on a missing file. Raises on an unreadable existing
+    file so callers can decide to abort rather than clobber it. Used to inspect
+    an agent's GLOBAL config for a shadowing codenexus entry without duplicating
+    the format dispatch in ``_apply_mcp_config``.
+    """
+    suffix = config_path.suffix
+    if suffix == ".jsonc":
+        return _load_jsonc(config_path)
+    if suffix in (".yaml", ".yml"):
+        import yaml
+
+        with open(config_path, encoding="utf-8") as f:
+            return yaml.safe_load(f) or {}
+    if suffix == ".toml":
+        try:
+            import tomllib
+        except ImportError:
+            import tomli as tomllib
+        with open(config_path, "rb") as f:
+            return tomllib.load(f)
+    # .json and anything else: plain JSON.
+    with open(config_path, encoding="utf-8") as f:
+        return json.load(f) or {}
+
+
 class AgentType(Enum):
     CLAUDE_CODE = "claude_code"
     OPENCLAW = "openclaw"
@@ -208,6 +236,32 @@ class AgentWizard:
         "~/.config/openclaw/openclaw.json",
         "./.openclaw/openclaw.json",
     ]
+
+    # Per-project (local-scope) config: path of the project-local MCP config
+    # file, relative to the project root. The index loads only when the agent
+    # opens that project, so registering A and B separately yields two
+    # independent, non-mixing indexes (방법 1). Agents not listed here either use
+    # a central mechanism (Claude Code) or have no documented per-project
+    # scoping (see _UNSUPPORTED_REASON).
+    _PROJECT_CONFIG_RELPATH = {
+        AgentType.CURSOR: ".cursor/mcp.json",
+        AgentType.COPILOT: ".vscode/mcp.json",
+        AgentType.ZED: ".zed/settings.json",
+        AgentType.CODEX: ".codex/config.toml",
+        AgentType.OPENCODE: "opencode.json",
+        AgentType.ANTIGRAVITY: ".agents/mcp_config.json",
+        # Continue auto-discovers a standard {"mcpServers": {...}} JSON file
+        # dropped into .continue/mcpServers/ (docs.continue.dev).
+        AgentType.CONTINUE: ".continue/mcpServers/codenexus.json",
+    }
+
+    # Why per-project local scope is not offered for these agents (doc-based).
+    _UNSUPPORTED_REASON = {
+        AgentType.WINDSURF: "only a global config file is documented (~/.codeium/windsurf/mcp_config.json)",
+        AgentType.AUGMENT: "MCP is GUI-managed with no documented file-based project config",
+        AgentType.OPENCLAW: "skills are global to the OpenClaw workspace, not scoped per project",
+        AgentType.HERMES: "no public per-project config mechanism is documented",
+    }
 
     def __init__(self):
         self.workspace = Path.cwd()
@@ -449,6 +503,10 @@ class AgentWizard:
         elif agent_type == AgentType.AUGMENT:
             return {"mcpServers": base_config}
         elif agent_type in [AgentType.ZED, AgentType.CONTINUE]:
+            # Zed uses `context_servers` (not mcpServers) — see
+            # https://zed.dev/docs/ai/mcp.md. Continue uses `mcpServers`.
+            if agent_type == AgentType.ZED:
+                return {"context_servers": base_config}
             return {"mcpServers": base_config}
         # Cursor, Windsurf, OpenCode, Antigravity all use the standard
         # `mcpServers` key (OpenCode uses JSON5 .jsonc, Antigravity uses
@@ -649,35 +707,31 @@ class AgentWizard:
     def apply_config_project(self, agent_type, project_path):
         """Register codenexus scoped to ONE project (independent per-project index).
 
-        For Claude Code this writes a **local-scope** entry in ``~/.claude.json``:
-        ``projects[<project_dir>].mcpServers.codenexus`` pointing at
-        ``-w <project_dir> serve``. The server then loads only when Claude Code
-        runs inside that project — so registering A and B separately gives two
-        independent indexes that never mix context (unlike the federated
-        multi-repo workspace, which serves many repos through one registration).
+        Two mechanisms, picked by agent:
 
-        Other agents have agent-specific per-project mechanisms that are not
-        handled here; for them this returns False with a clear message and the
-        user should fall back to the global ``apply_config`` flow.
+        - **Claude Code** writes a local-scope entry in the central ``~/.claude.json``
+          ``projects[<project_dir>].mcpServers.codenexus`` map. The server loads only
+          when Claude Code runs inside that project.
+        - **Project-local-file agents** (Cursor, Copilot, Zed, Codex, OpenCode,
+          Antigravity, Continue) write a project-local MCP config file inside the
+          project (e.g. ``<project>/.cursor/mcp.json``). The agent loads it only for
+          that project folder, so registering A and B separately gives two
+          independent, non-mixing indexes (방법 1) — unlike the federated
+          ``setup-workspace``, which serves many repos through one registration.
+
+        Agents with no documented per-project mechanism (Windsurf, Augment,
+        OpenClaw, Hermes) return False with a clear reason; use the global
+        ``apply_config`` flow or the federated ``setup-workspace`` for those.
 
         Args:
-            agent_type: the agent to configure (Claude Code for local scope).
+            agent_type: the agent to configure.
             project_path: the project directory the index is scoped to.
 
         Returns:
-            True if the local-scope entry was written (and the project indexed).
+            True if the per-project entry was written (and the project indexed).
         """
         info = self.get_agent_info(agent_type)
         if not info:
-            return False
-
-        if agent_type != AgentType.CLAUDE_CODE:
-            print(
-                f"[INFO] Per-project (local-scope) registration is currently "
-                f"supported for Claude Code only. For {info.name}, use "
-                f"`codenexus wizard setup {agent_type.value}` (global) or the "
-                f"agent's own project-scoped config file."
-            )
             return False
 
         project_path = Path(project_path).expanduser().resolve()
@@ -685,6 +739,56 @@ class AgentWizard:
             print(f"[ERROR] Project directory does not exist: {project_path}")
             return False
 
+        # Claude Code: central projects map in ~/.claude.json.
+        if agent_type == AgentType.CLAUDE_CODE:
+            return self._apply_claude_code_local_scope(info, project_path)
+
+        # Project-local config file agents.
+        if agent_type in self._PROJECT_CONFIG_RELPATH:
+            return self._apply_project_local_config(agent_type, info, project_path)
+
+        # No documented per-project mechanism.
+        reason = self._UNSUPPORTED_REASON.get(
+            agent_type, "no per-project config mechanism is documented"
+        )
+        print(
+            f"[INFO] Per-project (local-scope) registration is not supported for "
+            f"{info.name}: {reason}."
+        )
+        print(
+            f"[INFO] Use `codenexus wizard setup {agent_type.value}` (global) or "
+            f"the federated `codenexus wizard setup-workspace {agent_type.value} ...`."
+        )
+        return False
+
+    def _global_codenexus(self, agent_type, info):
+        """Return the codenexus entry from the agent's GLOBAL config file, or None.
+
+        A global entry applies to every project and would shadow a per-project
+        one (agents merge global + project config), defeating independence. Used
+        to warn — never auto-deletes the user's config.
+        """
+        gpath = Path(info.config_file).expanduser()
+        if not gpath.exists():
+            return None
+        try:
+            data = _read_config_file(gpath)
+        except Exception:
+            return None
+        if not isinstance(data, dict):
+            return None
+        # The agent's MCP block lives under the top-level key generate_mcp_config
+        # returns (mcpServers / mcp_servers / mcp / context_servers).
+        cfg = self.generate_mcp_config(agent_type, Path("/_codenexus_probe"))
+        for key in cfg:
+            section = data.get(key)
+            if isinstance(section, dict) and "codenexus" in section:
+                return section["codenexus"]
+        return None
+
+    def _apply_claude_code_local_scope(self, info, project_path):
+        """Write a Claude Code local-scope entry into the central ~/.claude.json
+        ``projects[<dir>].mcpServers.codenexus`` map (independent per-project)."""
         config_path = Path(info.config_file).expanduser()
         config_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -746,6 +850,60 @@ class AgentWizard:
             "register other projects separately for independent indexes."
         )
 
+        self._auto_index(project_path)
+        return True
+
+    def _apply_project_local_config(self, agent_type, info, project_path):
+        """Write a project-local MCP config file (e.g. ``<project>/.cursor/mcp.json``)
+        so the index loads only inside that project — independent per-project
+        indexes (방법 1). Reuses the format-aware ``_apply_mcp_config`` writer by
+        redirecting its target path into the project; no new format code needed.
+        """
+        config = self.generate_mcp_config(agent_type, project_path)
+        if not config:
+            print(f"[WARNING] No configuration to apply for {info.name}")
+            return False
+
+        # Warn if a global codenexus would shadow this per-project one.
+        global_cn = self._global_codenexus(agent_type, info)
+        if global_cn is not None:
+            gpath = Path(info.config_file).expanduser()
+            print(
+                f"[WARNING] A global codenexus entry already exists in {gpath} "
+                f"({global_cn.get('args') or global_cn})."
+            )
+            print(
+                "[WARNING] That entry applies to every project and will shadow this "
+                "per-project one. Remove it (e.g. `codenexus wizard clear` or edit the "
+                "file) for per-project indexes to take effect independently."
+            )
+
+        relpath = self._PROJECT_CONFIG_RELPATH[agent_type]
+        project_config_path = project_path / relpath
+
+        # Build a throwaway AgentInfo pointing at the project-local file so the
+        # existing format-aware writer (json/jsonc/yaml/toml + merge + backup +
+        # UTF-8) writes there instead of the global home path.
+        import dataclasses
+
+        project_info = dataclasses.replace(info, config_file=str(project_config_path))
+        ok = self._apply_mcp_config(project_info, config)
+        if not ok:
+            return False
+
+        print(
+            f"[SUCCESS] Registered local-scope codenexus for {info.name} at: "
+            f"{project_config_path}"
+        )
+        print(
+            "  This index loads ONLY when the agent opens this project; "
+            "register other projects separately for independent indexes."
+        )
+        if agent_type == AgentType.ZED:
+            print(
+                "  [NOTE] Zed loads project settings only after you trust the worktree "
+                "(prompted on first open)."
+            )
         self._auto_index(project_path)
         return True
 

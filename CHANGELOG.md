@@ -2,20 +2,35 @@
 
 ### Added — per-project (local-scope) registration
 - `codenexus wizard setup <agent> --scope local -p <project>` registers an
-  **independent per-project index** for Claude Code, written to the `projects`
-  map in `~/.claude.json` (`projects[<dir>].mcpServers.codenexus` →
-  `codenexus -w <dir> serve`). The index loads only when Claude Code runs inside
-  that project, so registering A and B separately gives two non-mixing indexes.
-  This complements the federated multi-repo workspace (1.3.1), which serves many
-  repos through one registration; use `--scope local` when you want projects to
-  stay fully separate.
-- `wizard.apply_config_project()` is the local-scope engine: it preserves other
-  `projects` entries and unrelated top-level keys, backs up the config file before
-  writing, and warns loudly if a user-scope (global) `codenexus` entry would
-  shadow the per-project one. Non-Claude-Code agents get a clear "not supported"
-  message instead of a broken write (per-project local scope is Claude
-  Code-specific). The default `setup` (no `--scope`) keeps the existing
-  user-scope behavior, so the flag is additive and non-breaking.
+  **independent per-project index** that loads only inside that project, so
+  registering A and B separately gives two non-mixing indexes (방법 1). This
+  complements the federated multi-repo workspace (1.3.1), which serves many repos
+  through one registration; use `--scope local` when you want projects to stay
+  fully separate. Two mechanisms, picked by agent:
+  - **Claude Code** writes a local-scope entry in the central `~/.claude.json`
+    `projects[<dir>].mcpServers.codenexus` map.
+  - **Project-local-file agents** write a project-local MCP config file inside
+    the project (the agent loads it only for that folder): Cursor
+    (`.cursor/mcp.json`), GitHub Copilot (`.vscode/mcp.json`), Zed
+    (`.zed/settings.json`, loaded after worktree trust), Codex
+    (`.codex/config.toml`, trusted projects only), OpenCode (`opencode.json` at
+    repo root), Antigravity (`.agents/mcp_config.json`), Continue.dev
+    (`.continue/mcpServers/codenexus.json`).
+- `wizard.apply_config_project()` is the dispatcher. It preserves other
+  `projects` entries / unrelated config keys, backs up the config file before
+  writing, and warns loudly if a global (user-scope) `codenexus` entry would
+  shadow the per-project one (agents merge global + project config). Agents with
+  no documented per-project mechanism — Windsurf (global-only), Augment
+  (GUI-managed), OpenClaw (skills are global to the workspace), Hermes (no
+  public docs) — return False with a clear reason instead of a broken write.
+  The default `setup` (no `--scope`) keeps the existing user-scope behavior, so
+  the flag is additive and non-breaking.
+
+### Fixed
+- **Zed MCP key.** `generate_mcp_config` returned `{"mcpServers": ...}` for Zed,
+  but Zed's actual key is `context_servers` (zed.dev/docs/ai/mcp). Both the global
+  and the new per-project Zed registration now use `context_servers`, so Zed
+  actually picks up the server. Regression test updated.
 
 ### Fixed — wizard
 - **Interactive multi-repo empty-path trap.** The first repo prompt read
