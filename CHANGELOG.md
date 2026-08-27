@@ -1,3 +1,21 @@
+## [1.3.3] - 2026-08-27
+
+### Fixed — wizard
+- **Interactive multi-repo empty-path trap.** The first repo prompt read
+  "Add repositories (empty path to finish):", but pressing Enter with zero
+  repos errored "Add at least one repository" and looped with no clear way
+  forward — the user followed the instruction and got an error loop. The
+  first prompt now says "Add at least one repository (enter its path)"; the
+  empty-to-finish guidance only appears after a repo is added, and each add
+  prints an `Added '<alias>' -> <path>` confirmation.
+- **cp949 config crash on non-ASCII config.** The wizard read/wrote existing
+  agent config files (yaml/json/jsonc) with the platform default encoding.
+  On a non-UTF-8 default locale such as cp949 (Korean Windows), reading a real
+  `~/.claude.json` containing non-ASCII UTF-8 bytes (emoji/Korean from Claude
+  session state) raised a codec error and aborted the wizard at apply time.
+  All config read/write sites now use `encoding="utf-8"`; the JSON dump uses
+  `ensure_ascii=False` so existing non-ASCII content is preserved verbatim.
+
 ## [1.3.2] - 2026-08-27
 
 ### Fixed
