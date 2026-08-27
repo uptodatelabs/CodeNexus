@@ -371,7 +371,7 @@ def test_apply_mcp_config_writes_file(tmp_path, monkeypatch):
     proj = tmp_path / "project"
     proj.mkdir()
     for at, p in targets.items():
-        AGENTS[at].config_file = str(p)
+        monkeypatch.setattr(AGENTS[at], "config_file", str(p))
         assert w.apply_config(at, proj) is True
         assert "codenexus" in p.read_text()
 
@@ -385,7 +385,7 @@ def test_apply_mcp_config_skips_unsupported_format(tmp_path, monkeypatch):
     md = tmp_path / "copilot-instructions.md"
     md.parent.mkdir(parents=True, exist_ok=True)
     md.write_text("# Copilot instructions\nIMPORTANT CONTENT\n")
-    AGENTS[AgentType.COPILOT].config_file = str(md)
+    monkeypatch.setattr(AGENTS[AgentType.COPILOT], "config_file", str(md))
 
     w = AgentWizard()
     result = w.apply_config(AgentType.COPILOT, tmp_path / "project")
