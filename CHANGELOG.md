@@ -1,3 +1,13 @@
+## [1.3.2] - 2026-08-27
+
+### Fixed
+- `codenexus --version` reported a hardcoded `1.1.40` regardless of the
+  installed version, because `cli.py` pinned `click.version_option(version="1.1.40")`
+  instead of reading the single source of truth (`codenexus/_version.py`). pip
+  metadata and `importlib.metadata` were already correct; only the flag lied.
+  The flag now reads `__version__` from `_version.py`, so future bumps no longer
+  require touching `cli.py`. Regression test added.
+
 ## [1.3.1] - 2026-08-27
 
 ### Added — multi-repo registration in the wizard
