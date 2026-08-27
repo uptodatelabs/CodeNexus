@@ -502,3 +502,22 @@ def test_get_context_capsule_returns_results(tmp_path):
     result = asyncio.run(call())
     assert len(result["capsule"]) > 0, "capsule was empty"
     assert result["token_estimate"] > 0
+
+
+def test_cli_version_matches_package_version():
+    """`codenexus --version` must report the package version (single source of
+    truth in codenexus/_version.py), not a stale hardcoded constant.
+
+    Regresses the bug where --version was pinned to "1.1.40" in cli.py while
+    _version.py moved forward, so `codenexus --version` lied about the release.
+    """
+    from click.testing import CliRunner
+
+    from codenexus import __version__
+    from codenexus.cli import main
+
+    result = CliRunner().invoke(main, ["--version"])
+    assert result.exit_code == 0, result.output
+    assert __version__ in result.output, (
+        f"--version reported {result.output.strip()!r} but package version is {__version__}"
+    )
