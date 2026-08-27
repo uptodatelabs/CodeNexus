@@ -521,3 +521,40 @@ def test_cli_version_matches_package_version():
     assert __version__ in result.output, (
         f"--version reported {result.output.strip()!r} but package version is {__version__}"
     )
+
+
+def test_apply_config_preserves_non_ascii_config_on_non_utf8_locale(tmp_path, monkeypatch):
+    """Wizard must read/write agent config as UTF-8 regardless of the locale's
+    default encoding (e.g. cp949 on Korean Windows). Regresses the bug where
+    reading an existing ~/.claude.json containing non-ASCII UTF-8 bytes (emoji
+    / Korean from session state) crashed with a codec error on cp949, blocking
+    the wizard at apply time.
+    """
+    import json
+
+    from codenexus.wizard import AGENTS, AgentType, AgentWizard
+
+    monkeypatch.setattr(AgentWizard, "_auto_index", lambda self, p: None)
+
+    cfg = tmp_path / ".claude.json"
+    cfg.parent.mkdir(parents=True, exist_ok=True)
+    # Existing config carrying non-ASCII UTF-8 content (emoji + Korean), like
+    # real Claude session state. Written as UTF-8 on disk.
+    cfg.write_text(
+        '{"mcpServers": {"other": {"command": "x"}}, "note": "마법사 ✨ 한글"}',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(AGENTS[AgentType.CLAUDE_CODE], "config_file", str(cfg))
+
+    proj = tmp_path / "project"
+    proj.mkdir()
+    w = AgentWizard()
+    assert w.apply_config(AgentType.CLAUDE_CODE, proj) is True, (
+        "wizard failed to read existing UTF-8 config under a non-UTF-8 default locale"
+    )
+
+    # Round-trip: non-ASCII content preserved verbatim, codenexus merged in.
+    data = json.loads(cfg.read_text(encoding="utf-8"))
+    assert "codenexus" in data["mcpServers"]
+    assert "other" in data["mcpServers"], "existing entry was clobbered"
+    assert data["note"] == "마법사 ✨ 한글", "non-ASCII content corrupted on rewrite"

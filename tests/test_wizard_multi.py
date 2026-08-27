@@ -225,3 +225,59 @@ def test_interactive_setup_multi_mode(tmp_path, monkeypatch):
     assert {r["alias"] for r in data["repos"]} == {"alpha", "beta"}
     cfg = json.loads((fakehome / ".claude.json").read_text(encoding="utf-8"))
     assert "codenexus" in cfg["mcpServers"]
+
+
+def test_interactive_multi_does_not_promise_empty_to_finish_on_first_repo(
+    tmp_path, monkeypatch, capsys
+):
+    """First repo prompt must not say 'empty path to finish' — you can't finish
+    with zero repos. Regresses the trap where the user pressed Enter (as the
+    header instructed) and got an 'Add at least one repository' error loop with
+    no way forward.
+
+    Feeds a LEADING empty path (exactly what the user did), then a real repo,
+    then finishes. Asserts the guidance shown before the first repo does not
+    promise empty-to-finish, and that the flow recovers and registers the repo.
+    """
+    fakehome = _fake_home(monkeypatch, tmp_path)
+    from codenexus.wizard import AgentType, AgentWizard
+
+    repo_a = _make_repo(tmp_path, "alpha", "alpha_symbol")
+    ws_root = tmp_path / "ws"
+
+    answers = iter(
+        [
+            "1",            # agent (claude, monkeypatched)
+            "2",            # multi-repo mode
+            str(ws_root),   # workspace root
+            "",             # workspace name (default)
+            "",             # repo path EMPTY (leading) -> must error+reprompt, NOT finish
+            str(repo_a),    # repo path (now valid)
+            "alpha",        # alias
+            "",             # empty path -> finish (now legitimate: 1 repo added)
+            "y",            # apply
+        ]
+    )
+    monkeypatch.setattr("builtins.input", lambda *a, **k: next(answers))
+
+    wiz = AgentWizard()
+    monkeypatch.setattr(wiz, "detect_installed_agents", lambda: [AgentType.CLAUDE_CODE])
+    wiz.interactive_setup()
+
+    out = capsys.readouterr().out
+
+    # Guidance shown before the first repo (text up to the first ERROR) must
+    # NOT promise 'empty path to finish' — that is a lie when no repo is added.
+    err_idx = out.find("[ERROR]")
+    assert err_idx != -1, "expected an error for the leading empty path"
+    pre_error = out[:err_idx]
+    assert "empty path to finish" not in pre_error, (
+        "first-repo guidance must not offer empty-path-to-finish (zero repos cannot finish)"
+    )
+
+    # The flow recovered from the leading empty and registered the repo.
+    assert (ws_root / ".codenexus" / "workspace.json").exists()
+    data = json.loads((ws_root / ".codenexus" / "workspace.json").read_text(encoding="utf-8"))
+    assert {r["alias"] for r in data["repos"]} == {"alpha"}
+    cfg = json.loads((fakehome / ".claude.json").read_text(encoding="utf-8"))
+    assert "codenexus" in cfg["mcpServers"]

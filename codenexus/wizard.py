@@ -15,7 +15,7 @@ def _load_jsonc(config_path: Path) -> dict:
     if the comment stripping is unsafe.
     """
     try:
-        text = config_path.read_text()
+        text = config_path.read_text(encoding="utf-8")
     except OSError:
         return {}
 
@@ -600,12 +600,15 @@ class AgentWizard:
         self._ask_input("Workspace name", default_name)  # name is cosmetic for now
 
         repos: list[tuple[str, Path]] = []
-        print("\nAdd repositories (empty path to finish):")
+        print("\nAdd at least one repository (enter its path).")
         while True:
             path_str = self._ask_input("  Repo path", "")
             if not path_str:
                 if not repos:
-                    print("  [ERROR] Add at least one repository.")
+                    print(
+                        "  [ERROR] At least one repository is required. "
+                        "Enter a path (or Ctrl+C to cancel)."
+                    )
                     continue
                 break
             p = Path(path_str).expanduser()
@@ -614,6 +617,8 @@ class AgentWizard:
                 continue
             alias = self._ask_input("  Alias", p.name)
             repos.append((alias, p))
+            print(f"  Added '{alias}' -> {p}")
+            print("  Add another repository (empty path to finish).")
 
         print()
         self.print_setup_guide(agent_type, workspace_root)
@@ -833,7 +838,7 @@ Use CodeNexus to search and analyze code in the workspace.
                 if is_yaml:
                     import yaml
 
-                    with open(config_path) as f:
+                    with open(config_path, encoding="utf-8") as f:
                         existing_config = yaml.safe_load(f) or {}
                 elif is_toml:
                     try:
@@ -845,7 +850,7 @@ Use CodeNexus to search and analyze code in the workspace.
                 elif is_jsonc:
                     existing_config = _load_jsonc(config_path)
                 else:
-                    with open(config_path) as f:
+                    with open(config_path, encoding="utf-8") as f:
                         existing_config = json.load(f)
             except Exception as e:
                 # An existing but unreadable config must NEVER be overwritten:
@@ -879,7 +884,7 @@ Use CodeNexus to search and analyze code in the workspace.
             if is_yaml:
                 import yaml
 
-                with open(config_path, "w") as f:
+                with open(config_path, "w", encoding="utf-8") as f:
                     yaml.dump(existing_config, f, default_flow_style=False, allow_unicode=True)
             elif is_toml:
                 try:
@@ -893,8 +898,8 @@ Use CodeNexus to search and analyze code in the workspace.
                 with open(config_path, "wb") as f:
                     tomli_w.dump(existing_config, f)
             else:
-                with open(config_path, "w") as f:
-                    json.dump(existing_config, f, indent=2)
+                with open(config_path, "w", encoding="utf-8") as f:
+                    json.dump(existing_config, f, indent=2, ensure_ascii=False)
 
             print(f"[SUCCESS] Updated {config_path}")
             return True
