@@ -488,6 +488,34 @@ codenexus wizard setup antigravity
 > - **OpenCode** is configured via its CLI (`opencode mcp add codenexus -- codenexus -w <project> serve`), which writes `~/.config/opencode/opencode.jsonc` (JSON5). CodeNexus reads this back automatically.
 > - **Antigravity** has no `mcp add` CLI subcommand, so CodeNexus injects the server block into `~/.gemini/config/mcp_config.json` (or your workspace `.agents/mcp_config.json`). After applying, reload via `/mcp` in the Antigravity CLI/IDE.
 
+### Register Multiple Repos with One Agent
+
+Since one MCP registration can serve many indexes (see [Multiple Indexes per Agent](#multiple-indexes-per-agent)), the wizard lets you register several repos with a single agent in one step — no hand-editing of config. This is the convenient path to CodeNexus's token-saving multi-repo context.
+
+**Non-interactive (scripts / CI):**
+
+```bash
+codenexus wizard setup-workspace claude \
+  -w ~/work/my-workspace \
+  --repo alpha=~/code/alpha \
+  --repo beta=~/code/beta \
+  --repo gamma=~/code/gamma
+```
+
+- `-w <root>` is the **workspace root** — a directory that will hold `.codenexus/workspace.json`. It is *not* one of the repos; pick any folder (often an empty one you keep for the workspace).
+- `--repo ALIAS=PATH` is repeatable. The alias is how files from that repo show up in results (`alpha/src/app.py`). If you omit the `=PATH` form and pass just a path, the folder name is used as the alias.
+- Every repo is indexed, and the agent config is written pointing at the workspace root — one registration serves all of them.
+
+**Interactive:**
+
+```bash
+codenexus wizard interactive
+```
+
+The wizard offers a mode prompt: **1 = single repo** (the existing flow), **2 = multi-repo**. Choose `2`, then supply a workspace root and repeatable repo path/alias pairs (empty path to finish).
+
+**Append more repos later:** re-run the same `setup-workspace` command with the same `-w` root and new `--repo` entries — existing members are kept, new ones are added.
+
 ### Clear Index Data
 
 ```bash
@@ -525,6 +553,7 @@ codenexus wizard interactive
 - [x] VS Code extension
 - [ ] Function-level call-graph extraction beyond imports (in progress)
 - [x] Multi-index serving: one agent registration, many indexes
+- [x] Multi-repo registration in the wizard (`wizard setup-workspace` + interactive)
 
 ---
 
@@ -552,6 +581,10 @@ workspaces are available to everyone.
 
 One MCP registration can serve many indexes: point it at a **workspace root**
 containing `.codenexus/workspace.json`.
+
+The easiest way to build this is the wizard — see
+[Register Multiple Repos with One Agent](#register-multiple-repos-with-one-agent).
+For a manual/low-level flow, use the `workspace` commands:
 
 ```bash
 # 1. Build a workspace (inside the root directory)
@@ -1102,6 +1135,34 @@ codenexus wizard setup antigravity
 > - **OpenCode**는 CLI로 구성합니다(`opencode mcp add codenexus -- codenexus -w <project> serve`) — `~/.config/opencode/opencode.jsonc`(JSON5)에 기록되며 CodeNexus가 자동으로 읽어 들입니다.
 > - **Antigravity**는 `mcp add` 하위 명령이 없으므로 CodeNexus가 `~/.gemini/config/mcp_config.json`(또는 워크스페이스 `.agents/mcp_config.json`)에 서버 블록을 주입합니다. 적용 후 Antigravity에서 `/mcp`로 리로드하세요.
 
+### 하나의 에이전트에 여러 레포 등록
+
+MCP 등록 하나로 여러 인덱스를 서빙하므로([에이전트별 멀티 인덱스](#에이전트별-멀티-인덱스) 참고), 마법사를 통해 여러 레포를 한 번에 등록할 수 있습니다 — 설정 파일을 직접 편집할 필요 없습니다. 토큰 절감 멀티-repo 컨텍스트로 가는 가장 편리한 경로입니다.
+
+**비대화형 (스크립트 / CI):**
+
+```bash
+codenexus wizard setup-workspace claude \
+  -w ~/work/my-workspace \
+  --repo alpha=~/code/alpha \
+  --repo beta=~/code/beta \
+  --repo gamma=~/code/gamma
+```
+
+- `-w <루트>`는 **워크스페이스 루트** — `.codenexus/workspace.json`이 저장될 디렉토리입니다. 레포 중 하나가 아니며, 보통 워크스페이스용으로 비워둔 빈 폴더를 지정하면 됩니다.
+- `--repo ALIAS=PATH`는 반복 가능합니다. 별칭은 결과에서 해당 레포 파일이 표시되는 방식(`alpha/src/app.py`)입니다. `=PATH` 형태를 생략하고 경로만 넘기면 폴더명이 별칭으로 쓰입니다.
+- 모든 레포가 인덱싱되며, 에이전트 설정은 워크스페이스 루트를 가리키도록 기록됩니다 — 등록 하나가 전부를 서빙합니다.
+
+**대화형:**
+
+```bash
+codenexus wizard interactive
+```
+
+마법사가 모드 프롬프트를 제공합니다: **1 = 단일 레포**(기존 흐름), **2 = 멀티-repo**. `2`를 선택한 뒤 워크스페이스 루트와 반복 가능한 레포 경로/별칭 쌍을 입력합니다(빈 경로로 종료).
+
+**나중에 레포 추가:** 동일한 `-w` 루트로 같은 `setup-workspace` 명령을 새 `--repo` 항목과 함께 다시 실행하면 — 기존 멤버는 유지되고 새 레포만 추가됩니다.
+
 ### 인덱스 삭제
 
 ```bash
@@ -1156,6 +1217,7 @@ codenexus wizard interactive
 - [x] VS Code 확장
 - [ ] 함수 수준 콜그래프 추출 확대 (진행 중)
 - [x] 멀티 인덱스 서빙: 에이전트 등록 하나로 여러 인덱스
+- [x] 마법사 멀티-repo 등록 (`wizard setup-workspace` + 대화형)
 
 ---
 
@@ -1182,6 +1244,9 @@ codenexus wizard interactive
 
 MCP 등록 하나로 여러 인덱스를 사용할 수 있습니다. `.codenexus/workspace.json`이
 있는 **워크스페이스 루트**를 바라보게 하세요.
+
+가장 쉬운 구성 방법은 마법사입니다 — [하나의 에이전트에 여러 레포 등록](#하나의-에이전트에-여러-레포-등록)을
+참고하세요. 수동/저수준 흐름은 `workspace` 명령을 사용합니다:
 
 ```bash
 # 1. 워크스페이스 구성 (루트 디렉토리에서)

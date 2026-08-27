@@ -1,3 +1,31 @@
+## [1.3.1] - 2026-08-27
+
+### Added — multi-repo registration in the wizard
+- The wizard now registers several repos with a single agent in one flow, so
+  the token-saving multi-index serving introduced in 1.3.0 is reachable without
+  hand-editing config. One MCP registration serves every member repo.
+  - Interactive: `codenexus wizard interactive` offers a mode prompt —
+    1 = single repo (existing flow), 2 = multi-repo (workspace root + repeatable
+    repo path/alias pairs).
+  - Non-interactive: `codenexus wizard setup-workspace <agent> -w <root>
+    --repo ALIAS=PATH [--repo ...]` for scripted setup.
+  - `wizard.apply_config_multi()` builds the `MultiRepoWorkspace`, adds/indexes
+    every member, and writes the agent config pointing at the workspace root.
+
+### Fixed
+- Windows CI: `tempfile.mkdtemp()` returns an 8.3 short path (`RUNNER~1`) on
+  CI Windows runners; `Path.resolve()` later expands it (`runneradmin`), so
+  path equality checks failed. The `temp_dir` fixture now resolves to the
+  canonical path up front. Regression test using `GetShortPathNameW` added.
+- Test isolation: two wizard tests mutated the module-level `AGENTS[…].config_file`
+  without reverting, leaking a stale deleted-tmp path into later tests. Switched
+  to `monkeypatch.setattr` (auto-revert).
+
+### CI
+- Pytest output now streams to the step log directly; the previous
+  redirect-then-`tail` approach was silently killed by `set -e` before `tail`
+  ran, hiding Windows-only failures. Test step pinned to `bash`.
+
 ## [1.3.0] - 2026-08-26
 
 ### Changed — fully open source
