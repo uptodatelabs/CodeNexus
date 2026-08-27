@@ -848,6 +848,77 @@ def setup(agent_name, project):
             console.print("[red]Failed to apply configuration[/]")
 
 
+@wizard.command("setup-workspace")
+@click.argument("agent_name")
+@click.option(
+    "--repo",
+    "repos",
+    multiple=True,
+    metavar="ALIAS=PATH",
+    help="Repository to register (repeatable). At least one required.",
+)
+@click.option(
+    "--workspace-root",
+    "-w",
+    default=".",
+    help="Workspace root that holds .codenexus/workspace.json (default: cwd).",
+)
+def setup_workspace(agent_name, repos, workspace_root):
+    """Register MULTIPLE repos with one agent via a federated workspace.
+
+    One MCP registration (``-w <workspace-root> serve``) then serves every
+    repo through the federated graph — the agent sees one combined index.
+
+    \b
+    Examples:
+      codenexus wizard setup-workspace claude \\
+        --workspace-root ~/myws \\
+        --repo frontend=~/code/frontend \\
+        --repo backend=~/code/backend
+    """
+    from .wizard import AgentWizard, get_agent_by_name
+
+    agent_type = get_agent_by_name(agent_name)
+    if not agent_type:
+        console.print(f"[red]Unknown agent: {agent_name}[/]")
+        console.print("[dim]Use 'codenexus wizard list' to see supported agents[/]")
+        return
+
+    if not repos:
+        console.print("[red]No repos given. Pass at least one --repo ALIAS=PATH.[/]")
+        console.print(
+            "[dim]Example: codenexus wizard setup-workspace claude "
+            "--repo frontend=./frontend --repo backend=./backend[/]"
+        )
+        raise click.exceptions.Exit(1)
+
+    parsed: list[tuple[str, str]] = []
+    for spec in repos:
+        if "=" not in spec:
+            # Treat the whole token as a path; alias = its dir name.
+            path = spec
+            alias = Path(path).name
+        else:
+            alias, path = spec.split("=", 1)
+        parsed.append((alias.strip(), path))
+
+    ws_root = Path(workspace_root).resolve()
+    console.print(f"[blue]Setting up multi-repo workspace at {ws_root}[/]")
+    for alias, path in parsed:
+        console.print(f"  [cyan]{alias}[/] -> {path}")
+
+    wiz = AgentWizard()
+    success = wiz.apply_config_multi(agent_type, ws_root, parsed)
+    if success:
+        console.print(
+            f"\n[green]Multi-repo workspace configured![/]\n"
+            f"  {len(parsed)} repo(s) served via: codenexus -w {ws_root} serve"
+        )
+    else:
+        console.print("[red]Failed to configure workspace[/]")
+        raise click.exceptions.Exit(1)
+
+
 @wizard.command()
 def interactive():
     """Run interactive setup wizard."""

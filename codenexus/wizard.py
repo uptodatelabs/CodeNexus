@@ -523,6 +523,18 @@ class AgentWizard:
             print("   /codenexus pipeline 'fix login bug'")
         print(f"\n{'=' * 60}\n")
 
+    @staticmethod
+    def _ask_input(prompt, default=None):
+        """EOF-safe prompt. Returns the default (or '') on EOF/error."""
+        suffix = f" [{default}]" if default is not None else ""
+        try:
+            val = input(f"{prompt}{suffix}: ").strip()
+        except (EOFError, OSError):
+            val = ""
+        if not val and default is not None:
+            return str(default)
+        return val
+
     def interactive_setup(self):
         print("\n=== CodeNexus Agent Setup Wizard ===\n")
         installed = self.detect_installed_agents()
@@ -538,33 +550,104 @@ class AgentWizard:
             print(f"  {i}. {info.name}")
 
         print()
-        choice = input("Select agent number: ").strip()
+        choice = self._ask_input("Select agent number", "1")
 
         try:
             idx = int(choice) - 1
-            if 0 <= idx < len(installed):
-                selected_agent = installed[idx]
-                project_path = input(f"Project path [{self.workspace}]: ").strip()
-                if not project_path:
-                    project_path = str(self.workspace)
-
-                # Show setup guide
-                self.print_setup_guide(selected_agent, Path(project_path))
-
-                # Ask to apply
-                apply = input("Apply configuration automatically? (y/n): ").strip().lower()
-                if apply == "y" or apply == "yes":
-                    self.apply_config(selected_agent, Path(project_path))
-                    print("\n[SUCCESS] Configuration applied!")
-                else:
-                    print("\n[INFO] Configuration not applied. Use the commands above manually.")
-            else:
-                print("Invalid selection.")
         except ValueError:
             print("Invalid input.")
+            return
+        if not (0 <= idx < len(installed)):
+            print("Invalid selection.")
+            return
+
+        selected_agent = installed[idx]
+
+        print(
+            "\nSetup mode:\n"
+            "  1) Single project (one index)\n"
+            "  2) Multi-repo workspace (multiple indexes via ONE agent registration)\n"
+        )
+        mode = self._ask_input("Select mode", "1")
+        if mode == "2":
+            self._interactive_multi_setup(selected_agent)
+            return
+
+        # Mode 1: single project (existing behaviour)
+        project_path = self._ask_input("Project path", str(self.workspace))
+
+        # Show setup guide
+        self.print_setup_guide(selected_agent, Path(project_path))
+
+        # Ask to apply
+        apply = self._ask_input("Apply configuration automatically? (y/n)", "n").lower()
+        if apply in ("y", "yes"):
+            self.apply_config(selected_agent, Path(project_path))
+            print("\n[SUCCESS] Configuration applied!")
+        else:
+            print("\n[INFO] Configuration not applied. Use the commands above manually.")
+
+    def _interactive_multi_setup(self, agent_type):
+        """Interactive flow for registering several repos with one agent."""
+        info = self.get_agent_info(agent_type)
+        print(f"\n[INFO] Configuring {info.name} with a multi-repo workspace.")
+
+        default_root = str(self.workspace)
+        root_str = self._ask_input("Workspace root", default_root)
+        workspace_root = Path(root_str).expanduser().resolve()
+
+        default_name = workspace_root.name or "workspace"
+        self._ask_input("Workspace name", default_name)  # name is cosmetic for now
+
+        repos: list[tuple[str, Path]] = []
+        print("\nAdd repositories (empty path to finish):")
+        while True:
+            path_str = self._ask_input("  Repo path", "")
+            if not path_str:
+                if not repos:
+                    print("  [ERROR] Add at least one repository.")
+                    continue
+                break
+            p = Path(path_str).expanduser()
+            if not p.exists():
+                print(f"  [WARNING] path does not exist: {p}")
+                continue
+            alias = self._ask_input("  Alias", p.name)
+            repos.append((alias, p))
+
+        print()
+        self.print_setup_guide(agent_type, workspace_root)
+
+        apply = self._ask_input(
+            "Apply configuration and index all repos? (y/n)", "n"
+        ).lower()
+        if apply in ("y", "yes"):
+            ok = self.apply_config_multi(agent_type, workspace_root, repos)
+            if ok:
+                print(
+                    f"\n[SUCCESS] Multi-repo workspace configured for {info.name}!\n"
+                    f"  {len(repos)} repo(s) served via: codenexus -w "
+                    f"{workspace_root} serve"
+                )
+            else:
+                print("\n[ERROR] Configuration failed. See messages above.")
+        else:
+            print("\n[INFO] Configuration not applied. Use the commands above manually.")
 
     def apply_config(self, agent_type, project_path):
-        """Apply configuration for an agent."""
+        """Apply configuration for a single project, then index it."""
+        result = self._write_agent_config(agent_type, project_path)
+        if result:
+            self._auto_index(project_path)
+        return result
+
+    def _write_agent_config(self, agent_type, project_path):
+        """Write the MCP/skill config for one agent pointing at ``project_path``.
+
+        No indexing happens here — callers decide whether/what to index. This
+        is shared by the single-project flow and the multi-repo flow (which
+        points the agent at a federated workspace root instead of one repo).
+        """
         info = self.get_agent_info(agent_type)
         if not info:
             return False
@@ -574,20 +657,79 @@ class AgentWizard:
             print(f"[WARNING] No configuration to apply for {info.name}")
             return False
 
-        # Special handling for OpenClaw
         if agent_type == AgentType.OPENCLAW:
-            result = self._apply_openclaw_config(config, project_path)
-        # For MCP-based agents
-        elif info.mcp_support:
-            result = self._apply_mcp_config(info, config)
-        else:
-            result = False
+            return self._apply_openclaw_config(config, project_path)
+        if info.mcp_support:
+            return self._apply_mcp_config(info, config)
+        return False
 
-        # Auto-index after successful config
-        if result:
-            self._auto_index(project_path)
+    def apply_config_multi(self, agent_type, workspace_root, repos):
+        """Register several repos with one agent via a federated workspace.
 
-        return result
+        Creates (or opens) the workspace at ``workspace_root``, adds each
+        repo, indexes all members, then writes the agent config pointing at
+        the workspace root — so a single ``-w <workspace_root> serve``
+        registration serves every repo through the federated graph.
+
+        Args:
+            agent_type: the agent to configure.
+            workspace_root: directory that will hold ``.codenexus/workspace.json``
+                and the per-member index DBs. Created if missing.
+            repos: list of ``(alias, path)`` tuples.
+
+        Returns:
+            True if the agent config was written.
+        """
+        from .workspace import MultiRepoWorkspace, WorkspaceConfig
+
+        workspace_root = Path(workspace_root)
+        workspace_root.mkdir(parents=True, exist_ok=True)
+        ws = MultiRepoWorkspace(workspace_root)
+
+        if not ws.config:
+            if not getattr(ws, "_config_load_ok", True):
+                print(
+                    f"[ERROR] Existing workspace at {workspace_root} is corrupt; "
+                    f"fix or remove {ws.config_path} first."
+                )
+                return False
+            ws.config = WorkspaceConfig(name=workspace_root.name or "workspace")
+            ws.save_config()
+
+        added = 0
+        for alias, path in repos:
+            alias = (alias or "").strip()
+            if not alias:
+                alias = Path(str(path)).name
+            p = Path(str(path)).expanduser()
+            if not p.exists():
+                print(f"[WARNING] Path does not exist, skipping: {p}")
+                continue
+            if ws.add_repo(alias, p):
+                added += 1
+            else:
+                print(f"[WARNING] Could not add repo '{alias}' (already registered?)")
+
+        if added == 0:
+            print("[ERROR] No repositories were added to the workspace.")
+            return False
+
+        print(f"\n[INFO] Indexing {added} repo(s)...")
+        try:
+            results = ws.index_all()
+        finally:
+            # Flush/close member graphs so the DBs are released before the
+            # MCP server (or a later query) re-opens them read-only.
+            for graph in list(ws.graphs.values()):
+                try:
+                    graph.close()
+                except Exception:
+                    pass
+            ws.graphs.clear()
+        for alias, count in results.items():
+            print(f"  {alias}: {count} files")
+
+        return self._write_agent_config(agent_type, workspace_root)
 
     def _auto_index(self, project_path):
         """Automatically index the project after config."""
