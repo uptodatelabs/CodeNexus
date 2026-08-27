@@ -1,3 +1,30 @@
+## [Unreleased]
+
+### Added — `wizard status` (per-index token savings & efficiency)
+- New `codenexus wizard status [project_path]` command. With no argument it
+  discovers every CodeNexus index referenced by detected agents (plus the
+  current directory) — the same discovery `wizard clear` uses — and shows one
+  block per index. With a `project_path` argument it inspects just that
+  project's index.
+- Each block reports **Nodes / Files / Edges** (and **Member DBs** for
+  multi-repo workspaces) plus a structural token-efficiency breakdown:
+  - **Full code** — Σ `len(node.content.split()) * 1.3`, the token cost of
+    sending all indexed source to a model.
+  - **Skeleton** — Σ `len(node.signature.split()) * 1.3`, the compressed
+    signature-only form CodeNexus serves for retrieval.
+  - **Token savings** — `full − skeleton`, and **`X% compressed`** —
+    `(1 − skeleton/full) * 100`.
+  - This is a query-independent structural metric (how much smaller the
+    searchable skeleton is than the raw source), not the per-task capsule
+    savings, which vary by query (`codenexus pipeline <task>` shows a specific
+    query's estimate). Module/namespace nodes (empty `content`) are excluded
+    from the token math so skeleton never exceeds full.
+- Discovery was extracted into `agent_parser.discover_codenexus_indexes()`,
+  shared by `wizard clear` and `wizard status` so the two commands never fork
+  listing logic. `_shorten_path` is now a module-level helper in `cli.py`.
+- Configured-but-unindexed agents are surfaced as a Warning panel (same as
+  `wizard clear`).
+
 ## [1.3.4] - 2026-08-27
 
 ### Added — interactive wizard mode 3

@@ -458,3 +458,169 @@ def find_codenexus_index(project_path: str) -> Path | None:
                 return candidate
 
     return None
+
+
+def discover_codenexus_indexes() -> tuple[list[dict], list[tuple[str, str]]]:
+    """Discover every CodeNexus index on disk referenced by detected agents
+    (plus the current working directory).
+
+    Shared by ``wizard clear`` and ``wizard status`` so the two commands never
+    fork discovery logic.
+
+    Returns ``(index_entries, unindexed_agents)`` where each entry is::
+
+        {"project": str, "agents": set[str], "index_dir": Path, "size": str}
+
+    and ``unindexed_agents`` is a list of ``(agent_name, configured_path)``
+    tuples for configured paths that have no index on disk (surfaced as a
+    warning so the user understands why they are absent).
+    """
+    agent_projects = get_all_indexed_projects()  # {"Claude Code": [{"path": ...}]}
+
+    # Map project path -> set of agents that reference it.
+    project_to_agents: dict[str, set] = {}
+    for agent_name, projects in agent_projects.items():
+        for proj in projects:
+            p = proj.get("path")
+            if not p:
+                continue
+            project_to_agents.setdefault(p, set()).add(agent_name)
+
+    # Include the current working directory (common manual case).
+    cwd = str(Path.cwd().resolve())
+    project_to_agents.setdefault(cwd, set())
+
+    index_entries: list[dict] = []
+    dir_to_entry: dict[str, dict] = {}  # real_index_dir -> entry (for merging)
+    unindexed_agents: list[tuple[str, str]] = []
+
+    for project_path, agents in project_to_agents.items():
+        index_path = find_codenexus_index(project_path)
+        if not index_path:
+            for agent in agents:
+                unindexed_agents.append((agent, project_path))
+            continue
+        index_dir = index_path.parent  # the .codenexus directory
+        real_dir = str(index_dir.resolve())
+
+        if real_dir in dir_to_entry:
+            # Same index referenced by another path: merge agents.
+            dir_to_entry[real_dir]["agents"].update(agents)
+            continue
+
+        total_size = 0
+        for f in index_dir.rglob("*"):
+            if f.is_file():
+                total_size += f.stat().st_size
+        size_str = (
+            f"{total_size / 1024:.1f} KB"
+            if total_size < 1024 * 1024
+            else f"{total_size / (1024 * 1024):.1f} MB"
+        )
+        entry = {
+            "project": project_path,
+            "agents": set(agents),
+            "index_dir": index_dir,
+            "size": size_str,
+        }
+        dir_to_entry[real_dir] = entry
+        index_entries.append(entry)
+
+    return index_entries, unindexed_agents
+
+
+# Token cost multiplier mirrors codenexus/server.py (len(text.split()) * 1.3).
+_TOKEN_PER_WORD = 1.3
+
+
+def compute_index_stats(index_dir: Path) -> dict | None:
+    """Open the index DB(s) under a ``.codenexus`` dir read-only and return
+    aggregate stats including token estimates.
+
+    Handles both layouts:
+
+    - **Single project**: ``<index_dir>/index.db``.
+    - **Multi-repo workspace**: ``<index_dir>/repos/<alias>.db`` (aggregated
+      across every member DB).
+
+    Returns ``None`` if no DB is found. Otherwise a dict with ``nodes``,
+    ``edges``, ``files``, ``dbs``, ``full_tokens``, ``skeleton_tokens``,
+    ``savings_tokens`` and ``compression_pct``.
+
+    Token model (structural, query-independent):
+
+    - ``full_tokens``     — Σ ``len(node.content.split()) * 1.3``: the cost of
+      sending all indexed source to a model.
+    - ``skeleton_tokens`` — Σ ``len(node.signature.split()) * 1.3``: the
+      compressed signature-only form CodeNexus serves for retrieval.
+    - ``savings_tokens``  — ``full - skeleton``.
+    - ``compression_pct`` — ``(1 - skeleton/full) * 100``.
+
+    This measures how much smaller the searchable skeleton index is than the
+    raw source it represents — not the per-task capsule savings, which vary by
+    query (see ``codenexus pipeline <task>`` for a specific query's estimate).
+    """
+    import sqlite3
+
+    index_dir = Path(index_dir)
+
+    # Locate the DB file(s) for this index directory.
+    direct = index_dir / "index.db"
+    if direct.exists():
+        db_paths = [direct]
+    else:
+        repos = index_dir / "repos"
+        db_paths = sorted(repos.glob("*.db")) if repos.is_dir() else []
+
+    if not db_paths:
+        return None
+
+    nodes = edges = files = 0
+    full_tokens = 0.0
+    skeleton_tokens = 0.0
+
+    for db_path in db_paths:
+        # Read-only URI connection: no schema init, no writes, no side effects.
+        uri = f"file:{db_path.as_posix()}?mode=ro"
+        conn = sqlite3.connect(uri, uri=True)
+        try:
+            nodes += conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
+            files += conn.execute(
+                "SELECT COUNT(DISTINCT file_path) FROM nodes"
+            ).fetchone()[0]
+            try:
+                edges += conn.execute("SELECT COUNT(*) FROM edges").fetchone()[0]
+            except sqlite3.Error:
+                # edges table may be absent in a partially-built DB.
+                pass
+            for content, signature in conn.execute(
+                "SELECT content, signature FROM nodes"
+            ).fetchall():
+                if not content:
+                    # Module/namespace nodes carry no source (content is empty
+                    # but signature is e.g. "module <path>"). Excluding them
+                    # from the token math keeps skeleton <= full — otherwise
+                    # skeleton could exceed full and imply negative savings.
+                    continue
+                full_tokens += len(content.split()) * _TOKEN_PER_WORD
+                if signature:
+                    skeleton_tokens += len(signature.split()) * _TOKEN_PER_WORD
+        finally:
+            conn.close()
+
+    # Derive savings/compression from the truncated int values so
+    # savings_tokens == full_tokens - skeleton_tokens holds exactly.
+    full_int = int(full_tokens)
+    skeleton_int = int(skeleton_tokens)
+    savings_int = full_int - skeleton_int
+    compression = (1 - skeleton_int / full_int) * 100 if full_int > 0 else 0.0
+    return {
+        "nodes": nodes,
+        "edges": edges,
+        "files": files,
+        "dbs": len(db_paths),
+        "full_tokens": full_int,
+        "skeleton_tokens": skeleton_int,
+        "savings_tokens": savings_int,
+        "compression_pct": round(compression, 1),
+    }

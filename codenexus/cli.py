@@ -23,6 +23,25 @@ if sys.platform == "win32":
 console = Console()
 
 
+def _shorten_path(path: str) -> str:
+    """Compact a path for display: ~ for $HOME, keep the tail segments.
+
+    Shared by ``wizard clear`` and ``wizard status`` so both render paths the
+    same way (raw print, never wrapped by Rich — legacy codepages like cp949
+    would otherwise drop characters or fold long paths).
+    """
+    home = str(Path.home())
+    if path.startswith(home):
+        path = "~" + path[len(home):]
+    if len(path) > 50:
+        parts = [p for p in path.split("/") if p]
+        if len(parts) > 3:
+            path = "/".join(
+                ["~" if parts[0] == "~" else parts[0]] + ["…"] + parts[-3:]
+            )
+    return path
+
+
 @click.group()
 @click.option("--workspace", "-w", default=".", help="Workspace path")
 @click.version_option(version=__version__, prog_name="codenexus")
@@ -962,74 +981,13 @@ def clear(clear_all, yes):
     selected entry, so accidental removal of a real index is avoided.
     """
     import shutil
-    from pathlib import Path
 
-    from .agent_parser import find_codenexus_index, get_all_indexed_projects
+    from .agent_parser import discover_codenexus_indexes
 
-    # 1. Parse every detected agent's config and collect codenexus project paths
-    agent_projects = get_all_indexed_projects()  # {"Claude Code": [{"path": ...}], ...}
-
-    # Map project path -> set of agents that reference it
-    project_to_agents: dict[str, set] = {}
-    for agent_name, projects in agent_projects.items():
-        for proj in projects:
-            p = proj.get("path")
-            if not p:
-                continue
-            project_to_agents.setdefault(p, set()).add(agent_name)
-
-    # 2. Also include the current working directory (common manual case)
-    cwd = str(Path.cwd().resolve())
-    project_to_agents.setdefault(cwd, set())
-
-    # 3. For each project path, find the real index directory and merge all
-    #    agents that point at the same index into a single entry. Agents whose
-    #    configured path has no index are collected for a warning so the user
-    #    understands why they don't appear in the table.
-    index_entries = []  # list of dicts
-    dir_to_entry: dict[str, dict] = {}  # real_index_dir -> entry (for merging)
-    unindexed_agents: list[tuple[str, str]] = []  # (agent, configured_path)
-
-    cwd = str(Path.cwd().resolve())
-
-    # Seed with the current directory so manual `codenexus` usage is covered.
-    project_to_agents.setdefault(cwd, set())
-
-    for project_path, agents in project_to_agents.items():
-        index_path = find_codenexus_index(project_path)
-        if not index_path:
-            # Configured path has no index on disk — remember for the warning.
-            for agent in agents:
-                unindexed_agents.append((agent, project_path))
-            continue
-        index_dir = index_path.parent  # the .codenexus directory
-        real_dir = str(index_dir.resolve())
-
-        if real_dir in dir_to_entry:
-            # Same index referenced by another path: merge agents.
-            dir_to_entry[real_dir]["agents"].update(agents)
-            # Keep the shortest / most specific project label for display.
-            continue
-
-        # Calculate size of the index directory
-        total_size = 0
-        for f in index_dir.rglob("*"):
-            if f.is_file():
-                total_size += f.stat().st_size
-
-        size_str = (
-            f"{total_size / 1024:.1f} KB"
-            if total_size < 1024 * 1024
-            else f"{total_size / (1024 * 1024):.1f} MB"
-        )
-        entry = {
-            "project": project_path,
-            "agents": set(agents),
-            "index_dir": index_dir,
-            "size": size_str,
-        }
-        dir_to_entry[real_dir] = entry
-        index_entries.append(entry)
+    # Discovery (shared with `wizard status`): parse every detected agent's
+    # config, find the real index dir for each, merge agents that point at the
+    # same index, and collect configured-but-unindexed paths for a warning.
+    index_entries, unindexed_agents = discover_codenexus_indexes()
 
     if not index_entries:
         console.print(
@@ -1063,19 +1021,6 @@ def clear(clear_all, yes):
             )
         )
 
-    def _shorten(path: str) -> str:
-        """Compact a path for display: ~ for $HOME, keep the tail segments."""
-        home = str(Path.home())
-        if path.startswith(home):
-            path = "~" + path[len(home):]
-        if len(path) > 50:
-            parts = [p for p in path.split("/") if p]
-            if len(parts) > 3:
-                path = "/".join(
-                    ["~" if parts[0] == "~" else parts[0]] + ["…"] + parts[-3:]
-                )
-        return path
-
     import os
 
     for i, e in enumerate(index_entries, 1):
@@ -1089,7 +1034,7 @@ def clear(clear_all, yes):
         agents_str = ", ".join(sorted(e["agents"])) or "(current dir)"
         print(f"{e['id']}")
         print(f"  Agents:       {agents_str}")
-        print(f"  Project Path: {_shorten(e['project'])}")
+        print(f"  Project Path: {_shorten_path(e['project'])}")
         print(f"  Full Path:    {e['project']}")
         print(f"  Index Dir:    {e['index_dir']}")
         print(f"  Size:         {e['size']}")
@@ -1193,6 +1138,95 @@ def clear(clear_all, yes):
             console.print(f"[red]Failed to clear {index_entries[i]['index_dir']}: {e}[/]")
 
     console.print(f"\n[bold green]Cleared {cleared} index(es)[/]")
+
+
+@wizard.command()
+@click.argument("project_path", required=False)
+def status(project_path):
+    """Show the status of every CodeNexus index: nodes/files/edges plus token
+    savings and compression ratio.
+
+    With a PROJECT_PATH argument, inspect just that project's index. Otherwise
+    discover all indexes referenced by detected agents (like ``wizard clear``)
+    and show each one.
+
+    Token savings are structural (full indexed source vs. the signature-only
+    skeleton form CodeNexus serves), not per-task capsule savings — those vary
+    by query (run ``codenexus pipeline <task>`` for a specific query's estimate).
+    """
+    from pathlib import Path
+
+    from .agent_parser import (
+        compute_index_stats,
+        discover_codenexus_indexes,
+        find_codenexus_index,
+    )
+
+    if project_path:
+        target = str(Path(project_path).resolve())
+        index_path = find_codenexus_index(target)
+        if not index_path:
+            console.print(f"[yellow]No CodeNexus index found at {target}[/]")
+            return
+        entries = [
+            {
+                "project": target,
+                "agents": set(),
+                "index_dir": index_path.parent,
+                "size": "",
+            }
+        ]
+        unindexed_agents: list[tuple[str, str]] = []
+    else:
+        entries, unindexed_agents = discover_codenexus_indexes()
+
+    if not entries:
+        console.print("[yellow]No CodeNexus index found.[/]")
+        return
+
+    print("CodeNexus index status:\n")
+
+    if unindexed_agents:
+        from rich.panel import Panel as _Panel
+
+        warn_lines = [f"  • {a}  ({_shorten_path(p)})" for a, p in sorted(set(unindexed_agents))]
+        console.print(
+            _Panel(
+                "[yellow]"
+                + "Configured but no index found at the configured path:\n"
+                + "\n".join(warn_lines)
+                + "[/yellow]",
+                title="[yellow]Warning[/yellow]",
+                border_style="yellow",
+                expand=False,
+            )
+        )
+
+    for i, e in enumerate(entries, 1):
+        stats = compute_index_stats(e["index_dir"])
+        agents_str = ", ".join(sorted(e["agents"])) or "(current dir)"
+        print(f"idx-{i}")
+        print(f"  Project:        {_shorten_path(e['project'])}")
+        print(f"  Agents:         {agents_str}")
+        print(f"  Index Dir:      {e['index_dir']}")
+        if e["size"]:
+            print(f"  Size:           {e['size']}")
+        if stats is None:
+            print("  Status:         index DB not readable")
+            print()
+            continue
+        print(f"  Nodes:          {stats['nodes']}")
+        print(f"  Files:          {stats['files']}")
+        print(f"  Edges:          {stats['edges']}")
+        if stats["dbs"] > 1:
+            print(f"  Member DBs:     {stats['dbs']}")
+        print(f"  Full code:      {stats['full_tokens']:,} tokens (all indexed source)")
+        print(f"  Skeleton:       {stats['skeleton_tokens']:,} tokens (signatures only)")
+        print(
+            f"  Token savings:  {stats['savings_tokens']:,} tokens "
+            f"({stats['compression_pct']}% compressed)"
+        )
+        print()
 
 
 if __name__ == "__main__":

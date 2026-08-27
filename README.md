@@ -589,6 +589,28 @@ codenexus wizard clear --all --yes
 You can also clear specific indexes by typing their IDs (e.g. `idx-1,idx-3`)
 or type the project directory name to confirm each deletion individually.
 
+### View Index Status & Token Savings
+
+```bash
+codenexus wizard status            # all indexes (like `wizard clear`)
+codenexus wizard status <project>  # one project's index only
+```
+
+Shows one block per discovered index with **Nodes / Files / Edges** (and
+**Member DBs** for multi-repo workspaces) plus a structural token-efficiency
+breakdown:
+
+- **Full code** — token cost of all indexed source (`len(content.split()) * 1.3`).
+- **Skeleton** — token cost of the signature-only form CodeNexus serves
+  (`len(signature.split()) * 1.3`).
+- **Token savings** — `full − skeleton`, shown as `N tokens (X% compressed)`.
+
+This is a query-independent structural metric: how much smaller the searchable
+skeleton index is than the raw source it represents. It is **not** the per-task
+capsule savings (those vary by query — run `codenexus pipeline <task>` for a
+specific query's estimate). Configured-but-unindexed agents are surfaced as a
+warning, just like in `wizard clear`.
+
 ### Interactive Setup
 
 ```bash
@@ -1281,6 +1303,26 @@ codenexus wizard clear --all --yes
 - `--yes`: 확인 프롬프트 생략
 
 ID 지정 삭제(`idx-1,idx-3` 입력)나 프로젝트 디렉토리명 입력으로 개별 확인 삭제도 가능합니다.
+
+### 인덱스 상태 및 토큰 절약량 확인
+
+```bash
+codenexus wizard status            # 모든 인덱스 (`wizard clear`와 동일)
+codenexus wizard status <project>  # 특정 프로젝트 인덱스만
+```
+
+발견된 각 인덱스별로 **Nodes / Files / Edges**(다중-repo 워크스페이스는
+**Member DBs** 포함)와 구조적 토큰 효율 분석을 보여줍니다:
+
+- **Full code** — 인덱싱된 전체 소스의 토큰 비용(`len(content.split()) * 1.3`).
+- **Skeleton** — CodeNexus가 검색에 사용하는 서명 전용 형태의 토큰 비용
+  (`len(signature.split()) * 1.3`).
+- **Token savings** — `full − skeleton`, `N tokens (X% compressed)`로 표시.
+
+이것은 쿼리와 무관한 구조적 지표입니다(검색 가능한 skeleton 인덱스가 원본
+소스보다 얼마나 작은가). **작업별 캡슐 절약량이 아닙니다** — 그것은 쿼리마다
+다르므로 `codenexus pipeline <task>`로 특정 쿼리의 추정치를 확인하세요.
+설정은 됐지만 인덱스가 없는 에이전트는 `wizard clear`와 동일하게 경고로 표시됩니다.
 
 ### 대화형 설정
 
