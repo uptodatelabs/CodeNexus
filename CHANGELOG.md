@@ -1,4 +1,4 @@
-## [Unreleased]
+## [1.3.5] - 2026-08-27
 
 ### Added — `wizard status` (per-index token savings & efficiency)
 - New `codenexus wizard status [project_path]` command. With no argument it
