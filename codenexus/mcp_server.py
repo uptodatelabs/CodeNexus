@@ -11,6 +11,7 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
 
+from ._version import __version__
 from .server import CodeNexusServer
 
 
@@ -24,7 +25,7 @@ def create_server(workspace: str) -> Server:
     ws = Path(workspace)
     engine = CodeNexusServer(ws)
 
-    server = Server("codenexus", version="1.1.40")
+    server = Server("codenexus", version=__version__)
 
     @server.list_tools()
     async def list_tools() -> list[Tool]:

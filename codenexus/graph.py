@@ -391,7 +391,35 @@ class DependencyGraph:
     def search_nodes(
         self, query: str, limit: int = 10, use_centrality: bool = True
     ) -> list[Node]:
-        """Search nodes with optional centrality ranking."""
+        """Search nodes with optional centrality ranking.
+
+        Multi-word queries are tokenized (OR semantics): each token is
+        searched independently and results are merged by centrality, so
+        ``"helper function"`` still finds ``helper`` instead of requiring
+        the literal phrase. A node whose ``name`` exactly equals the query
+        is always ranked first so ``impact Engine`` resolves to the class.
+        """
+        q = (query or "").strip()
+        if not q:
+            return []
+        # Multi-word → union of per-token searches (OR, not phrase).
+        if len(q.split()) > 1:
+            merged: list[Node] = []
+            seen: set[str] = set()
+            for token in q.split():
+                for node in self.search_nodes(
+                    token, limit=limit, use_centrality=False
+                ):
+                    if node.id not in seen:
+                        seen.add(node.id)
+                        merged.append(node)
+            if use_centrality:
+                merged.sort(key=lambda n: n.centrality_score, reverse=True)
+            return merged[:limit]
+        # B1: fetch extra candidates so an exact name match is not cut off
+        # by LIMIT before the exact-first rerank below (e.g. limit=1 with
+        # helper outranking Engine on centrality).
+        fetch_limit = max(limit, 20)
         order_by = "ORDER BY n.centrality_score DESC" if use_centrality else ""
         if self._fts_available:
             with self._lock:
@@ -404,9 +432,20 @@ class DependencyGraph:
                         {order_by}
                         LIMIT ?
                         """,
-                        (query, limit),
+                        (query, fetch_limit),
                     ).fetchall()
-                    return [self._node_from_row(row) for row in rows]
+                    nodes = [self._node_from_row(row) for row in rows]
+                    # B1: exact symbol-name match ranks first so
+                    # `impact Engine` resolves to the class, not the
+                    # highest-centrality partial match (e.g. helper).
+                    ql = query.strip().lower()
+                    nodes.sort(
+                        key=lambda n: (
+                            0 if n.name.lower() == ql else 1,
+                            -n.centrality_score,
+                        )
+                    )
+                    return nodes[:limit]
                 except sqlite3.Error:
                     # Malformed FTS query syntax (special chars etc.) — fall through.
                     logger.debug("FTS query failed for %r; using LIKE fallback", query)
@@ -426,7 +465,12 @@ class DependencyGraph:
                 """,
                 (pattern, pattern, pattern, limit),
             ).fetchall()
-        return [self._node_from_row(row) for row in rows]
+        nodes = [self._node_from_row(row) for row in rows]
+        ql = query.strip().lower()
+        nodes.sort(
+            key=lambda n: (0 if n.name.lower() == ql else 1, -n.centrality_score)
+        )
+        return nodes[:limit]
 
     def get_file_nodes(self, file_path: str) -> list[Node]:
         """Return every node recorded for a file, ordered by position."""

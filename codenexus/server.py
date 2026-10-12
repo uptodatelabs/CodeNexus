@@ -15,6 +15,7 @@ from typing import Any
 from mcp.server import Server
 from mcp.types import TextContent, Tool
 
+from ._version import __version__
 from .graph import DependencyGraph, Edge, Node
 from .llm import LLMConfig, LocalLLM
 from .memory import SessionMemory, get_memory
@@ -83,7 +84,7 @@ class CodeNexusServer:
 
         self.graph = DependencyGraph(self.db_path)
         self.parser = CodeParser()
-        self.server = Server("codenexus", version="1.1.40")
+        self.server = Server("codenexus", version=__version__)
         self.max_workers = max_workers
 
         # Fully open source: every feature is enabled unconditionally.
@@ -489,9 +490,6 @@ class CodeNexusServer:
                 except Exception as e:
                     print(f"Error processing {file_path}: {e}")
 
-        node_cap = None  # unlimited (open source)
-        total_nodes = self.graph.conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
-        truncated = False  # kept for API compatibility; always False
         # Call targets may reference builtins/external symbols with no node;
         # only edges whose endpoints exist may be inserted (FK enforced).
         known_ids = {
@@ -504,12 +502,8 @@ class CodeNexusServer:
         pending_edges = []
         for file_path, nodes, edges in parse_results:
             for node in nodes:
-                if node_cap is not None and total_nodes >= node_cap:
-                    truncated = True
-                    break
                 self.graph.add_node(node)
                 known_ids.add(node.id)
-                total_nodes += 1
             pending_edges.extend(edges)
             # Track indexed file in session memory.
             self._record_file_change(str(file_path), "index", len(nodes))
@@ -539,21 +533,13 @@ class CodeNexusServer:
             ]
             module_nodes, import_edges = ImportResolver(self.workspace).build(entries)
             for mod_node in module_nodes:
-                if node_cap is None or total_nodes < node_cap:
-                    self.graph.add_node(mod_node)
-                    known_ids.add(mod_node.id)
-                    total_nodes += 1
+                self.graph.add_node(mod_node)
+                known_ids.add(mod_node.id)
             import_edges = [
                 e for e in import_edges
                 if e.source_id in known_ids and e.target_id in known_ids
             ]
             self.graph.add_edges(import_edges)
-
-        if truncated:
-            print(
-                f"Node limit reached for tier '{self.tier.value}' "
-                f"(max_nodes={node_cap}). Some nodes omitted."
-            )
 
         self._save_cache()
 
