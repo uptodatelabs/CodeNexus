@@ -321,6 +321,11 @@ def test_clear_missing_config_file_no_crash(tmp_path, monkeypatch):
     monkeypatch.setenv("USERPROFILE", str(fakehome))
     monkeypatch.setenv("USERPROFILE", str(fakehome))
 
+    # Hermetic: run from tmp_path so index discovery never picks up the real
+    # repo's cwd index (an externally locked index made shutil.rmtree fail
+    # with WinError 32, leaking "Error" into the CLI output).
+    monkeypatch.chdir(tmp_path)
+
     runner = CliRunner()
     result = runner.invoke(cli, ["wizard", "clear", "--all", "--yes"])
     assert result.exit_code == 0, result.output

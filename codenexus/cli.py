@@ -55,6 +55,33 @@ def main(ctx, workspace):
     ctx.obj["workspace"] = Path(workspace).resolve()
 
 
+@main.command("help")
+@click.pass_context
+def help_cmd(ctx):
+    """Quick usage guide — everything is also in the TUI (codenexus ui)."""
+    console.print(
+        "[bold]CodeNexus quick guide[/bold]\n\n"
+        "Start here: [green]codenexus ui[/green] — the keyboard-first TUI "
+        "(↑/↓ + Enter to act, Esc to go back, ? or F1 for help on every "
+        "screen — no typing required).\n\n"
+        "Common commands:\n"
+        "  ui          Launch the keyboard-first TUI\n"
+        "  index       Index the workspace for context retrieval\n"
+        "  status      Show index status and statistics\n"
+        "  search      Search indexed symbols\n"
+        "  impact      Analyse what depends on a symbol\n"
+        "  pipeline    Build a context capsule for a task\n"
+        "  top         Top symbols by centrality\n"
+        "  serve       Run the MCP server for AI agents\n"
+        "  wizard      Configure AI agents (agent, mode, directory)\n"
+        "  workspace   Manage multi-repo workspaces\n"
+        "  memory      Session memory commands\n"
+        "  llm         Local LLM status and control\n"
+        "  license     Show license information\n\n"
+        "Every command accepts -w/--workspace to pick the workspace."
+    )
+
+
 @main.command()
 @click.option("--full", "-f", is_flag=True, help="Full re-index (ignore cache)")
 @click.option("--workers", "-j", default=4, help="Number of parallel workers")
@@ -346,6 +373,17 @@ def clear(ctx):
     server.clear_index()
 
     console.print("[green]Index cleared[/]")
+
+
+@main.command()
+@click.pass_context
+def ui(ctx):
+    """Launch the interactive TUI (keyboard-first menu interface)."""
+    workspace = ctx.obj["workspace"]
+
+    from .tui import CodeNexusTUI
+
+    CodeNexusTUI(workspace).run()
 
 
 @main.group()

@@ -239,6 +239,11 @@ class CodeParser:
                             signature=sig,
                         )
                     )
+                    # Superclass clauses -> inherits edges (Beta(Alpha))
+                    for base in self._get_base_names(node, source_bytes, name):
+                        edges.append(
+                            Edge(source_id=node_id, target_id=base, edge_type="inherits")
+                        )
                     current_def_stack.append(node_id)
                     for child in node.children:
                         walk_node(child, depth + 1)
@@ -468,6 +473,11 @@ class CodeParser:
                     node_id = name
                     sig = self._extract_class_signature_regex(lines, i)
                     end = self._find_block_end(lines, i)
+                    # Superclass clauses -> inherits edges (Beta(Alpha))
+                    for base in self._extract_regex_bases(stripped, name):
+                        edges.append(
+                            Edge(source_id=node_id, target_id=base, edge_type="inherits")
+                        )
                     defs.append(
                         {
                             "name": name,
@@ -536,6 +546,55 @@ class CodeParser:
             )
 
         return nodes, edges
+
+    def _get_base_names(
+        self, node, source_bytes: bytes, class_name: str
+    ) -> list[str]:
+        """Extract base-class identifiers from a tree-sitter class node.
+
+        ``class Beta(Alpha)``, ``class Foo extends Bar`` and friends carry
+        the superclass list in a language-specific container child; grab the
+        identifier leaves out of whichever container is present.
+        """
+        containers = {
+            "superclasses",
+            "argument_list",
+            "base_classes",
+            "base_clause",
+            "type_list",
+            "derivations",
+            "class_heritage",
+        }
+        bases: list[str] = []
+        for child in node.children:
+            if child.type not in containers:
+                continue
+            for c in child.children:
+                if c.type in (
+                    "identifier",
+                    "type_identifier",
+                    "dotted_name",
+                    "qualified_identifier",
+                    "attribute",
+                ):
+                    text = self._slice_utf8(source_bytes, c.start_byte, c.end_byte)
+                    bases.append(text.split(".")[-1])
+        return bases
+
+    def _extract_regex_bases(self, line: str, class_name: str) -> list[str]:
+        """Extract base-class names from a regex-matched class signature line.
+
+        ``class Beta(Alpha):`` -> ``["Alpha"]``; dotted bases are reduced to
+        their last segment so they can match symbol node ids.
+        """
+        m = re.search(re.escape(class_name) + r"\s*\(([^)]*)\)", line)
+        if not m:
+            return []
+        return [
+            part.strip().split(".")[-1]
+            for part in m.group(1).split(",")
+            if part.strip()
+        ]
 
     def _extract_function_signature_regex(self, lines: list[str], start: int) -> str:
         """Extract function signature using regex."""

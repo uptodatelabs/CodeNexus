@@ -632,14 +632,14 @@ class DependencyGraph:
 
             for row in dependents:
                 dep = self._node_from_row(row)
-                entry = {"id": dep.id, "name": dep.name, "file": dep.file_path}
-                if current_depth == 0:
-                    impact["direct"].append(entry)
-                else:
-                    impact["indirect"].append({**entry, "depth": current_depth})
-
-                if current_depth < depth:
-                    queue.append((dep.id, current_depth + 1))
+                hop = current_depth + 1
+                if hop <= depth:
+                    entry = {"id": dep.id, "name": dep.name, "file": dep.file_path}
+                    if hop == 1:
+                        impact["direct"].append(entry)
+                    else:
+                        impact["indirect"].append({**entry, "depth": hop})
+                    queue.append((dep.id, hop))
 
         impact["total"] = len(impact["direct"]) + len(impact["indirect"])
         return impact
