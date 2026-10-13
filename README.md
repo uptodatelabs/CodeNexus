@@ -59,6 +59,42 @@ codenexus pipeline "fix login bug"
 codenexus status
 ```
 
+### Interactive TUI (Recommended)
+
+Launch a full keyboard-driven terminal UI — everything is doable with arrow
+keys and Enter, no need to memorize CLI commands:
+
+```bash
+codenexus ui
+```
+
+| Key | Action |
+|-----|--------|
+| `↑` / `↓` | Move selection |
+| `Enter` | Run the selected item |
+| `Esc` | Go back one screen |
+| `?` / `F1` | Help overlay (works on any screen) |
+| Quit | Select "Quit" on the dashboard |
+
+From the dashboard you can reach **all** features: re-index the workspace,
+browse & search symbols, context pipeline, index management (rebuild/delete),
+index list (each index's path, node/edge/file stats, size, last update),
+index status, top symbols, settings, agent wizard, session memory,
+multi-repo workspace, local LLM, and the MCP serve command.
+
+The **agent wizard** walks you through agent setup without manual config
+editing. When choosing a project directory, you can either browse the
+filesystem or type a path directly:
+
+- `↑` / `↓` — move, `Enter` — select
+- `←` — go up one folder (repeats to the drive root, where a **drive picker** appears)
+- `→` — enter the highlighted folder
+- `Esc` — cancel and return to the menu
+
+Settings changed in the TUI (memory/LLM toggles, token budget, search limit,
+impact depth) are saved to `.codenexus/ui_config.json` and applied on the
+next launch.
+
 ---
 
 ## How It Works
@@ -773,6 +809,41 @@ codenexus top
 # 임팩트 분석
 codenexus impact "main"
 ```
+
+### 대화형 TUI (권장)
+
+키보드만으로 모든 기능을 조작할 수 있는 터미널 UI를 실행합니다. CLI 명령어를
+외울 필요 없이 방향키와 Enter만으로 진행됩니다:
+
+```bash
+codenexus ui
+```
+
+| 키 | 동작 |
+|-----|--------|
+| `↑` / `↓` | 항목 이동 |
+| `Enter` | 선택 항목 실행 |
+| `Esc` | 한 단계 뒤로 |
+| `?` / `F1` | 도움말 오버레이 (모든 화면에서 동작) |
+| 종료 | 대시보드에서 "Quit" 선택 |
+
+대시보드에서 **모든** 기능을 사용할 수 있습니다: 워크스페이스 재인덱싱,
+심볼 탐색·검색, 컨텍스트 파이프라인, 인덱스 관리(재구축/삭제), 인덱스 목록
+(각 인덱스의 경로·노드/엣지/파일 통계·용량·최근 갱신 시각), 인덱스 상태,
+상위 심볼, 설정, 에이전트 마법사, 세션 메모리, 멀티리포 워크스페이스,
+로컬 LLM, MCP serve 명령 조회.
+
+**에이전트 마법사**는 설정 파일을 직접 수정할 필요 없이 에이전트 등록을
+단계별로 안내합니다. 프로젝트 디렉터리 선택 시 파일시스템 탐색과 직접
+경로 입력을 모두 지원합니다:
+
+- `↑` / `↓` — 이동, `Enter` — 선택
+- `←` — 한 단계 위 폴더로 (반복하면 드라이브 루트에 도달하며 **드라이브 선택** 화면 표시)
+- `→` — 커서 폴더로 진입
+- `Esc` — 취소 후 메뉴 복귀
+
+TUI에서 변경한 설정(메모리/LLM 토글, 토큰 예산, 검색 제한, 임팩트 깊이)은
+`.codenexus/ui_config.json`에 저장되며 다음 실행 때 적용됩니다.
 
 ---
 
