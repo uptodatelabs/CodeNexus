@@ -1,3 +1,38 @@
+## [1.4.0] - 2026-10-13
+
+### Added — full-featured keyboard-first TUI
+- `codenexus ui` gained a complete TUI rebuild: 5 core screens (dashboard /
+  nav / detail / pipeline / status) plus dedicated screens for index list,
+  index management (reindex / clear / status / top), wizard, settings, memory,
+  workspace, LLM, and status — **every CLI capability is now reachable from
+  the TUI via arrow keys + Enter only** (no free-text typing required).
+- **Help system**: `?` / `F1` global help overlay with per-context help
+  content on every screen, a dashboard Help menu, and `codenexus help` CLI.
+- **Index list screen**: lists single-project `index.db` and multi-repo
+  `repos/*.db` indexes with absolute path, nodes/edges/files stats, db size,
+  last-updated time, and reindex tips. Refreshes on every entry (fixes the
+  cached-singleton "No index found" issue after reindex).
+- **Wizard directory stage**: workspace candidates + filesystem Browse
+  (DirectoryTree) + manual path entry. Left/right arrows move up/down one
+  directory level, drive letters are selectable at the root, Backspace still
+  goes up, Esc returns to the menu. Re-entering Browse fully resets tree
+  path/cursor/visibility (fixes the half-rendered re-entry issue).
+- **Settings screen**: 5 persisted options (`memory_enabled`, `llm_enabled`,
+  `max_tokens`, `search_limit`, `impact_depth`) toggled/cycled with
+  Enter/Space, saved to `.codenexus/ui_config.json` on Esc, honored by the
+  impact screen on next open.
+
+### Changed
+- `codenexus ui` is now the primary entry point for interactive use; the
+  dashboard menu grew from 15 to 16 entries (added Index list).
+
+### Development
+- TUI test suites grew to cover all screens: tui, tui_help, tui_settings,
+  tui_manage, tui_wizard_dir (8 cases incl. arrow navigation, drive
+  selection, re-entry reset), tui_indexlist, tui_full, tui_coverage —
+  observable-behavior tests via Textual `run_test` only. Full suite:
+  177 tests green, ruff clean.
+
 ## [1.3.5] - 2026-08-27
 
 ### Added — `wizard status` (per-index token savings & efficiency)
