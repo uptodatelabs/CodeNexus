@@ -1,3 +1,12 @@
+## [1.4.1] - 2026-10-13
+
+### Fixed — packaging & CI
+- `dev` extra now includes `pytest-asyncio` so `pip install -e ".[dev]"` +
+  `pytest` works out of the box (TUI tests use Textual `run_test`; without
+  the plugin the first async test fails with "async def functions are not
+  natively supported"). Reproduced in a clean venv: 1 failed → install →
+  177 passed.
+
 ## [1.4.0] - 2026-10-13
 
 ### Added — full-featured keyboard-first TUI
